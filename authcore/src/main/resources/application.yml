@@ -1,0 +1,12 @@
+auth:
+  enable-jwt: true
+  enable-session: true
+  enable-oauth2: false
+
+jwt:
+  secret: "Gm/dZyJQfEJxC0tDdHlQYxZxVa4vX2RkYXJrbmV0VmFsaWRLZXlNYWtlU3VyZQ=="
+  expiration: 86400000  # 24 hours
+
+spring:
+  session:
+    store-type: jdbc  # Store session in the database

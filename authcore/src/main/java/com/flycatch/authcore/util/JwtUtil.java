@@ -15,14 +15,25 @@ public class JwtUtil {
     @Value("${jwt.secret}")
     private String secretKey;
 
-    @Value("${jwt.expiration}")
-    private long expirationMs;
+    @Value("${jwt.access-token-expiration}")
+    private long accessTokenExpiration;
 
-    public String generateToken(String username) {
+    @Value("${jwt.refresh-token-expiration}")
+    private long refreshTokenExpiration;
+
+    public String generateAccessToken(String username) {
+        return generateToken(username, accessTokenExpiration);
+    }
+
+    public String generateRefreshToken(String username) {
+        return generateToken(username, refreshTokenExpiration);
+    }
+
+    private String generateToken(String username, long expirationTime) {
         return Jwts.builder()
                 .setSubject(username)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
+                .setExpiration(new Date(System.currentTimeMillis() + expirationTime))
                 .signWith(SignatureAlgorithm.HS256, secretKey)
                 .compact();
     }

@@ -7,9 +7,10 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "auth")
 public class AuthCoreConfig {
 
-    private boolean enableJwt = true;
-    private boolean enableSession = true;
-    private boolean enableOAuth2 = false;
+    private boolean enableJwt;
+    private boolean enableSession;
+    private boolean enableOAuth2;
+    private boolean enableRefreshToken;
 
     public boolean isEnableJwt() {
         return enableJwt;
@@ -33,5 +34,13 @@ public class AuthCoreConfig {
 
     public void setEnableOAuth2(boolean enableOAuth2) {
         this.enableOAuth2 = enableOAuth2;
+    }
+
+    public boolean isEnableRefreshToken() {
+        return enableRefreshToken;
+    }
+
+    public void setEnableRefreshToken(boolean enableRefreshToken) {
+        this.enableRefreshToken = enableRefreshToken;
     }
 }

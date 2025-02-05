@@ -1,6 +1,7 @@
 package com.flycatch.authcore.controller;
 
 import com.flycatch.authcore.service.AuthService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -15,17 +16,22 @@ public class AuthController {
         this.authService = authService;
     }
 
-    @PostMapping("/login")
-    public Map<String, String> login(@RequestBody Map<String, String> request) {
-        String username = request.get("username");
-        String password = request.get("password");
-        return authService.authenticate(username, password);
-    }
+    @PostMapping
+    public ResponseEntity<?> handleAuth(@RequestBody Map<String, String> request) {
+        String action = request.get("action");
 
-    @PostMapping("/register")
-    public Map<String, String> register(@RequestBody Map<String, String> request) {
-        String username = request.get("username");
-        String password = request.get("password");
-        return authService.register(username, password);
+        switch (action) {
+            case "login":
+                return ResponseEntity.ok(authService.authenticate(request.get("username"), request.get("password")));
+
+            case "register":
+                return ResponseEntity.ok(authService.register(request.get("username"), request.get("password")));
+
+            case "refresh":
+                return ResponseEntity.ok(Map.of("accessToken", authService.refreshAccessToken(request.get("refreshToken"))));
+
+            default:
+                return ResponseEntity.badRequest().body(Map.of("error", "Invalid action"));
+        }
     }
 }

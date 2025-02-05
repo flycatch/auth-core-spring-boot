@@ -2,10 +2,12 @@ auth:
   enable-jwt: true
   enable-session: true
   enable-oauth2: false
+  enable-refresh-token: false
 
 jwt:
   secret: "Gm/dZyJQfEJxC0tDdHlQYxZxVa4vX2RkYXJrbmV0VmFsaWRLZXlNYWtlU3VyZQ=="
-  expiration: 86400000  # 24 hours
+  access-token-expiration: 86400000  # 24 hours
+  refresh-token-expiration: 604800000  # 7 days
 
 spring:
   session:

@@ -1,11 +1,14 @@
 package com.flycatch.authcore.middleware;
 
+import com.flycatch.authcore.config.AuthCoreConfig;
 import com.flycatch.authcore.util.JwtUtil;
 import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.User;
@@ -20,10 +23,14 @@ import java.util.Collections;
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
-    private final JwtUtil jwtUtil;
+    private static final Logger logger = LoggerFactory.getLogger(JwtAuthFilter.class);
 
-    public JwtAuthFilter(JwtUtil jwtUtil) {
+    private final JwtUtil jwtUtil;
+    private final AuthCoreConfig authCoreConfig;
+
+    public JwtAuthFilter(JwtUtil jwtUtil, AuthCoreConfig authCoreConfig) {
         this.jwtUtil = jwtUtil;
+        this.authCoreConfig = authCoreConfig;
     }
 
     @Override
@@ -38,6 +45,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             try {
                 String username = jwtUtil.extractUsername(token);
 
+                if (authCoreConfig.isEnableLogging()) {
+                    logger.info("Processing JWT token for user: {}", username);
+                }
+
                 if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     UserDetails userDetails = new User(username, "", Collections.emptyList());
 
@@ -47,9 +58,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authentication);
+
+                        if (authCoreConfig.isEnableLogging()) {
+                            logger.info("User '{}' authenticated via JWT", username);
+                        }
                     }
                 }
             } catch (ExpiredJwtException e) {
+                if (authCoreConfig.isEnableLogging()) {
+                    logger.warn("JWT token expired for user: {}", e.getClaims().getSubject());
+                }
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token Expired");
                 return;
             }

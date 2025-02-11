@@ -11,6 +11,7 @@ public class AuthCoreConfig {
     private boolean enableSession;
     private boolean enableOAuth2;
     private boolean enableRefreshToken;
+    private boolean enableLogging;
 
     public boolean isEnableJwt() {
         return enableJwt;
@@ -42,5 +43,13 @@ public class AuthCoreConfig {
 
     public void setEnableRefreshToken(boolean enableRefreshToken) {
         this.enableRefreshToken = enableRefreshToken;
+    }
+
+    public boolean isEnableLogging() {
+        return enableLogging;
+    }
+
+    public void setEnableLogging(boolean enableLogging) {
+        this.enableLogging = enableLogging;
     }
 }

@@ -13,6 +13,14 @@ public class AuthCoreConfig {
     private boolean enableRefreshToken;
     private boolean enableLogging;
 
+    // New cookie settings
+    private boolean enableCookies;
+    private String cookieName;
+    private boolean cookieHttpOnly;
+    private boolean cookieSecure;
+    private String cookieSameSite;
+    private int cookieMaxAge; // Expiry in seconds
+
     public boolean isEnableJwt() {
         return enableJwt;
     }
@@ -51,5 +59,53 @@ public class AuthCoreConfig {
 
     public void setEnableLogging(boolean enableLogging) {
         this.enableLogging = enableLogging;
+    }
+
+    public boolean isEnableCookies() {
+        return enableCookies;
+    }
+
+    public void setEnableCookies(boolean enableCookies) {
+        this.enableCookies = enableCookies;
+    }
+
+    public String getCookieName() {
+        return cookieName;
+    }
+
+    public void setCookieName(String cookieName) {
+        this.cookieName = cookieName;
+    }
+
+    public boolean isCookieHttpOnly() {
+        return cookieHttpOnly;
+    }
+
+    public void setCookieHttpOnly(boolean cookieHttpOnly) {
+        this.cookieHttpOnly = cookieHttpOnly;
+    }
+
+    public boolean isCookieSecure() {
+        return cookieSecure;
+    }
+
+    public void setCookieSecure(boolean cookieSecure) {
+        this.cookieSecure = cookieSecure;
+    }
+
+    public String getCookieSameSite() {
+        return cookieSameSite;
+    }
+
+    public void setCookieSameSite(String cookieSameSite) {
+        this.cookieSameSite = cookieSameSite;
+    }
+
+    public int getCookieMaxAge() {
+        return cookieMaxAge;
+    }
+
+    public void setCookieMaxAge(int cookieMaxAge) {
+        this.cookieMaxAge = cookieMaxAge;
     }
 }

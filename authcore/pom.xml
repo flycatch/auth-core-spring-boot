@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.flycatch</groupId>
 	<artifactId>authcore</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>0.0.10-SNAPSHOT</version>
 	<name>authcore</name>
 	<description>Authcore project for Spring Boot</description>
 	<url/>
@@ -99,11 +99,36 @@
 
 	<build>
 		<plugins>
+			<!-- Disable Spring Boot repackage (since this is a library, not an app) -->
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>repackage</id>
+						<goals>
+							<goal>repackage</goal>
+						</goals>
+						<phase>package</phase>
+						<configuration>
+							<skip>true</skip> <!-- ✅ disable main class check -->
+						</configuration>
+					</execution>
+				</executions>
 			</plugin>
 		</plugins>
 	</build>
+
+
+<!--	<build>-->
+<!--		<plugins>-->
+<!--			<plugin>-->
+<!--				<groupId>org.springframework.boot</groupId>-->
+<!--				<artifactId>spring-boot-maven-plugin</artifactId>-->
+<!--			</plugin>-->
+<!--		</plugins>-->
+<!--	</build>-->
+
+
 
 </project>

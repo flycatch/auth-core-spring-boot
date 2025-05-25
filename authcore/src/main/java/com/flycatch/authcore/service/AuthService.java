@@ -31,12 +31,15 @@ public class AuthService {
         this.authCoreConfig = authCoreConfig;
     }
 
-    public Map<String, String> authenticate(String username, String password, HttpServletResponse response) {
+    public Map<String, String> authenticate(String loginId, String password, HttpServletResponse response) {
         if (authCoreConfig.isEnableLogging()) {
-            logger.info("Authenticating user: {}", username);
+            logger.info("Authenticating user: {}", loginId);
         }
 
-        Optional<? extends AuthCoreUser> userOpt = userService.findByUsername(username);
+        Optional<? extends AuthCoreUser> userOpt =
+                loginId.contains("@") ? userService.findByEmail(loginId)
+                        : userService.findByUsername(loginId);
+
         Map<String, String> responseData = new HashMap<>();
 
         if (userOpt.isPresent() && passwordEncoder.matches(password, userOpt.get().getPassword())) {
@@ -54,34 +57,36 @@ public class AuthService {
             }
 
             responseData.put("message", "JWT_AUTHENTICATED");
-            logger.info("User '{}' authenticated successfully.", username);
+            logger.info("User '{}' authenticated successfully.", loginId);
         } else {
             responseData.put("message", "INVALID_CREDENTIALS");
-            logger.warn("Authentication failed for user: {}", username);
+            logger.warn("Authentication failed for user: {}", loginId);
         }
 
         return responseData;
     }
 
-    public Map<String, String> register(String username, String password) {
+
+    public Map<String, String> register(String username, String email, String password) {
         if (authCoreConfig.isEnableLogging()) {
-            logger.info("Registering user: {}", username);
+            logger.info("Registering user: username={}, email={}", username, email);
         }
 
         Map<String, String> response = new HashMap<>();
 
-        if (userService.findByUsername(username).isPresent()) {
+        boolean usernameExists = username != null && userService.findByUsername(username).isPresent();
+        boolean emailExists = email != null && userService.findByEmail(email).isPresent();
+
+        if (usernameExists || emailExists) {
             response.put("message", "USER_ALREADY_EXISTS");
-            logger.warn("User '{}' already exists.", username);
             return response;
         }
 
-        userService.save(username, passwordEncoder.encode(password));
+        userService.save(username, email, passwordEncoder.encode(password));
         response.put("message", "USER_REGISTERED_SUCCESSFULLY");
-        logger.info("User '{}' registered.", username);
-
         return response;
     }
+
 
     public Map<String, String> refreshAccessToken(String refreshToken, HttpServletResponse response) {
         if (!authCoreConfig.isEnableRefreshToken()) {

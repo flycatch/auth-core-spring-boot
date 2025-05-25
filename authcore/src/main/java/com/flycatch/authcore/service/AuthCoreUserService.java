@@ -6,5 +6,6 @@ import java.util.Optional;
 
 public interface AuthCoreUserService {
     Optional<? extends AuthCoreUser> findByUsername(String username);
-    AuthCoreUser save(String username, String encodedPassword);
+    Optional<? extends AuthCoreUser> findByEmail(String email);
+    AuthCoreUser save(String username, String email, String encodedPassword);
 }

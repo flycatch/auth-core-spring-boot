@@ -27,10 +27,17 @@ public class AuthController {
 
         switch (action) {
             case "login":
-                return ResponseEntity.ok(authService.authenticate(request.get("username"), request.get("password"), httpResponse));
-
+                return ResponseEntity.ok(authService.authenticate(
+                        request.get("username") != null ? request.get("username") : request.get("email"),
+                        request.get("password"),
+                        httpResponse
+                ));
             case "register":
-                return ResponseEntity.ok(authService.register(request.get("username"), request.get("password")));
+                return ResponseEntity.ok(authService.register(
+                        request.get("username"),
+                        request.get("email"),
+                        request.get("password")
+                ));
 
             case "refresh":
                 // Check if refresh tokens are enabled

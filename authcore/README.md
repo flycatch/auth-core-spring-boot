@@ -1,19 +1,21 @@
 # AuthCore
 
-**AuthCore** is a minimal, stateless authentication module designed to plug into any Spring Boot application. It provides JWT-based login, secure token validation, and a configurable request filter.
+**AuthCore** is a flexible, stateless authentication module designed to plug into any Spring Boot application. It provides JWT-based login, refresh token support, role-based access control (RBAC), and optional support for cookies and OAuth2.
 
-It is **framework-agnostic** and delegates user and password management entirely to the consuming application.
+It is **framework-agnostic** and delegates user, password, and identity management entirely to the consuming application.
 
 ---
 
 ## ✨ Features
 
 - ✅ Stateless JWT authentication  
+- ✅ Role-Based Access Control (RBAC)  
+- ✅ Flexible login using **username or email**  
 - ✅ Secure `/auth` endpoint supporting `login`, `register`, `refresh`, and `logout`  
 - ✅ Token-based request filtering  
 - ✅ Cookie-based refresh token support  
 - ✅ Easily configurable via `application.yml`  
-- ✅ Pluggable user and password logic  
+- ✅ Pluggable user, email, and password logic  
 - ✅ Designed to be extended with OAuth2 or session-based authentication  
 
 ---
@@ -72,13 +74,14 @@ Your application must provide the following:
 ```java
 public class AppUser implements AuthCoreUser {
     private String username;
+    private String email;
     private String password;
+    private Set<String> roles;
 
-    @Override
     public String getUsername() { return username; }
-
-    @Override
+    public String getEmail() { return email; }
     public String getPassword() { return password; }
+    public Set<String> getRoles() { return roles; }
 }
 ```
 
@@ -100,9 +103,19 @@ public class AppUserService implements AuthCoreUserService {
     }
 
     @Override
-    public AuthCoreUser save(String username, String encodedPassword) {
-        AppUser user = new AppUser(username, encodedPassword);
-        return userRepository.save(user);
+    public Optional<? extends AuthCoreUser> findByEmail(String email) {
+        return userRepository.findByEmail(email);
+    }
+
+    @Override
+    public AuthCoreUser save(String username, String email, String encodedPassword) {
+        Set<String> roles = new HashSet<>();
+        if (userRepository.count() == 0) {
+            roles.add("ADMIN");
+        } else {
+            roles.add("USER");
+        }
+        return userRepository.save(new AppUser(username, email, encodedPassword, roles));
     }
 }
 ```
@@ -122,13 +135,25 @@ public PasswordEncoder passwordEncoder() {
 
 ### Method: `POST`
 
-#### Actions supported:
+#### Supported Actions
 - `login`
 - `register`
 - `refresh`
 - `logout`
 
-#### Login Request
+#### Register Request
+
+```json
+{
+  "action": "register",
+  "username": "admin",
+  "email": "admin@example.com",
+  "password": "admin123"
+}
+```
+
+#### Login Request (Username or Email)
+
 ```json
 {
   "action": "login",
@@ -136,8 +161,17 @@ public PasswordEncoder passwordEncoder() {
   "password": "admin123"
 }
 ```
+or
+```json
+{
+  "action": "login",
+  "email": "admin@example.com",
+  "password": "admin123"
+}
+```
 
 #### Response
+
 ```json
 {
   "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
@@ -152,15 +186,39 @@ Authorization: Bearer <accessToken>
 
 ---
 
+## 🛡 Role-Based Access Control
+
+You can protect your endpoints with `@PreAuthorize`:
+
+```java
+@PreAuthorize("hasRole('ADMIN')")
+@GetMapping("/admin")
+public String adminOnly() {
+    return "Welcome, admin!";
+}
+```
+
+Add method security config:
+
+```java
+@Configuration
+@EnableMethodSecurity
+public class MethodSecurityConfig {}
+```
+
+---
+
 ## ✅ Capabilities Matrix
 
-| Capability                     | Provided by AuthCore | Provided by You               |
-|-------------------------------|-----------------------|-------------------------------|
-| `/auth` endpoint              | ✅ Yes                | ❌ No                         |
-| JWT generation & validation   | ✅ Yes                | ❌ No                         |
+| Capability                     | Provided by AuthCore | Provided by You                |
+|-------------------------------|-----------------------|--------------------------------|
+| `/auth` endpoint              | ✅ Yes                | ❌ No                          |
+| JWT generation & validation   | ✅ Yes                | ❌ No                          |
+| Role-based token injection    | ✅ Yes                | ❌ No                          |
+| Flexible login (username/email) | ✅ Yes              | ❌ No                          |
 | User lookup logic             | ❌ No                 | ✅ Yes (`AuthCoreUserService`) |
 | Password validation           | ❌ No                 | ✅ Yes (`PasswordEncoder`)     |
-| JWT filter integration        | ✅ Yes                | ❌ No                         |
+| User entity persistence       | ❌ No                 | ✅ Yes                         |
 
 ---
 
@@ -175,23 +233,16 @@ public class DemoApplication {
 }
 ```
 
-```yaml
-auth:
-  enable-jwt: true
-  enable-refresh-token: true
-  enable-cookies: true
-  cookie-name: AuthRefreshToken
-```
-
 ---
 
 ## 📜 Summary
 
-AuthCore is designed to **streamline JWT authentication** in Spring Boot applications. It provides essential functionality out-of-the-box while giving you full control over:
+AuthCore is designed to **streamline authentication and authorization** in Spring Boot applications. It provides essential functionality out-of-the-box while giving you full control over:
 
-- User storage
+- User storage (username/email)
 - Password policies
 - Role management
+- Token validation & security context
 - OAuth2 or session extensions
 
 This **separation of responsibilities** makes AuthCore easy to integrate, secure by default, and adaptable to a wide range of projects.

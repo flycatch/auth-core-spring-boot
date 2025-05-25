@@ -61,9 +61,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 }
 
                 if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                    List<SimpleGrantedAuthority> authorities = roles.stream()
-                            .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
-                            .collect(Collectors.toList());
+
+                    List<SimpleGrantedAuthority> authorities;
+
+                    if (authCoreConfig.isEnableRbac()) {
+                        authorities = roles.stream()
+                                .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
+                                .collect(Collectors.toList());
+                    } else {
+                        authorities = List.of(); // Skip RBAC
+                    }
 
                     UserDetails userDetails = new User(username, "", authorities);
 
@@ -79,6 +86,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                         }
                     }
                 }
+
             } catch (ExpiredJwtException e) {
                 if (authCoreConfig.isEnableLogging()) {
                     logger.warn("JWT token expired for user: {}", e.getClaims().getSubject());

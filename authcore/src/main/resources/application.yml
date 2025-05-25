@@ -2,6 +2,7 @@ auth:
   enable-jwt: true
   enable-session: true
   enable-oauth2: false
+  enable-rbac: true
   enable-refresh-token: true
   enable-logging: true
   enable-cookies: true  # Enable cookies for storing refresh tokens

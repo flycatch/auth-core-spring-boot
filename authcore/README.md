@@ -9,7 +9,7 @@ It is **framework-agnostic** and delegates user, password, and identity manageme
 ## ✨ Features
 
 - ✅ Stateless JWT authentication  
-- ✅ Role-Based Access Control (RBAC)  
+- ✅ Role-Based Access Control (RBAC) (optional via config)  
 - ✅ Flexible login using **username or email**  
 - ✅ Secure `/auth` endpoint supporting `login`, `register`, `refresh`, and `logout`  
 - ✅ Token-based request filtering  
@@ -45,6 +45,7 @@ auth:
   enable-oauth2: false
   enable-refresh-token: true
   enable-logging: true
+  enable-rbac: true              # 👈 NEW: Enable or disable role-based access
   enable-cookies: true
   cookie-name: "AuthRefreshToken"
   cookie-http-only: true
@@ -206,6 +207,11 @@ Add method security config:
 public class MethodSecurityConfig {}
 ```
 
+**Toggle RBAC with `auth.enable-rbac` in `application.yml`:**
+
+- `true`: inject roles into `SecurityContext`, `@PreAuthorize` works
+- `false`: skip role injection, only basic authentication applies
+
 ---
 
 ## ✅ Capabilities Matrix
@@ -214,7 +220,7 @@ public class MethodSecurityConfig {}
 |-------------------------------|-----------------------|--------------------------------|
 | `/auth` endpoint              | ✅ Yes                | ❌ No                          |
 | JWT generation & validation   | ✅ Yes                | ❌ No                          |
-| Role-based token injection    | ✅ Yes                | ❌ No                          |
+| Role-based token injection    | ✅ Optional           | ❌ No                          |
 | Flexible login (username/email) | ✅ Yes              | ❌ No                          |
 | User lookup logic             | ❌ No                 | ✅ Yes (`AuthCoreUserService`) |
 | Password validation           | ❌ No                 | ✅ Yes (`PasswordEncoder`)     |
@@ -241,7 +247,7 @@ AuthCore is designed to **streamline authentication and authorization** in Sprin
 
 - User storage (username/email)
 - Password policies
-- Role management
+- Role management (RBAC optional)
 - Token validation & security context
 - OAuth2 or session extensions
 

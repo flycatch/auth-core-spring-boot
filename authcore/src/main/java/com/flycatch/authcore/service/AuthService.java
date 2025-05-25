@@ -40,11 +40,12 @@ public class AuthService {
         Map<String, String> responseData = new HashMap<>();
 
         if (userOpt.isPresent() && passwordEncoder.matches(password, userOpt.get().getPassword())) {
-            String accessToken = jwtUtil.generateAccessToken(username);
+            AuthCoreUser user = userOpt.get();
+            String accessToken = jwtUtil.generateAccessToken(user.getUsername(), user.getRoles());
             responseData.put("accessToken", accessToken);
 
             if (authCoreConfig.isEnableRefreshToken()) {
-                String refreshToken = jwtUtil.generateRefreshToken(username);
+                String refreshToken = jwtUtil.generateRefreshToken(user.getUsername());
                 responseData.put("refreshToken", refreshToken);
 
                 if (authCoreConfig.isEnableCookies()) {
@@ -94,7 +95,13 @@ public class AuthService {
             throw new IllegalArgumentException("Invalid refresh token");
         }
 
-        String newAccessToken = jwtUtil.generateAccessToken(username);
+        Optional<? extends AuthCoreUser> userOpt = userService.findByUsername(username);
+        if (userOpt.isEmpty()) {
+            throw new IllegalArgumentException("User not found for refresh token");
+        }
+
+        AuthCoreUser user = userOpt.get();
+        String newAccessToken = jwtUtil.generateAccessToken(username, user.getRoles());
         responseData.put("accessToken", newAccessToken);
 
         if (authCoreConfig.isEnableRefreshToken()) {

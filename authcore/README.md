@@ -45,7 +45,7 @@ auth:
   enable-oauth2: false
   enable-refresh-token: true
   enable-logging: true
-  enable-rbac: true              # 👈 NEW: Enable or disable role-based access
+  enable-rbac: true              
   enable-cookies: true
   cookie-name: "AuthRefreshToken"
   cookie-http-only: true

@@ -3,6 +3,7 @@ package com.flycatch.authcore.service;
 import com.flycatch.authcore.model.User;
 import com.flycatch.authcore.repository.UserRepository;
 import com.flycatch.authcore.util.JwtUtil;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import java.util.HashMap;
@@ -10,17 +11,12 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
+@RequiredArgsConstructor
 public class AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-
-    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtUtil = jwtUtil;
-    }
 
     public Map<String, String> authenticate(String username, String password) {
         Optional<User> userOpt = userRepository.findByUsername(username);

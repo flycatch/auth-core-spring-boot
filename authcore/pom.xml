@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.flycatch</groupId>
 	<artifactId>authcore</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>0.12.10-SNAPSHOT</version>
 	<name>authcore</name>
 	<description>Authcore project for Spring Boot</description>
 	<url/>
@@ -40,6 +40,17 @@
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
 
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<scope>provided</scope>
+		</dependency>
+
+		<!-- Validation API (for @NotNull, @NotEmpty) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
 
 		<!-- Spring Security (For Authentication & Authorization) -->
 		<dependency>

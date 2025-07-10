@@ -26,11 +26,18 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(AbstractHttpConfigurer::disable)
+                .csrf(AbstractHttpConfigurer::disable) //
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
                         .anyRequest().authenticated()
-                );
+                )
+                .oauth2Login(oauth2 -> oauth2
+                .defaultSuccessUrl("/auth", true)  // Redirect after login success
+        )
+                .sessionManagement(session -> session
+                        .maximumSessions(1)
+                )
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         if (authCoreConfig.isEnableSession()) {
             http.sessionManagement(session -> session

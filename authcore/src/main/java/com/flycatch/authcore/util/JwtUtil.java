@@ -1,11 +1,16 @@
 package com.flycatch.authcore.util;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+import java.security.Key;
 import java.util.*;
 import java.util.function.Function;
 
@@ -34,13 +39,15 @@ public class JwtUtil {
         if (roles != null) {
             claims.put("roles", roles);
         }
+        byte[] keyBytes = Base64.getDecoder().decode(secretKey);
+        Key key = new SecretKeySpec(keyBytes, SignatureAlgorithm.HS256.getJcaName());
 
         return Jwts.builder()
                 .setClaims(claims)
                 .setSubject(username)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expirationTime))
-                .signWith(SignatureAlgorithm.HS256, secretKey)
+                .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 
@@ -76,10 +83,14 @@ public class JwtUtil {
     }
 
     private Claims extractAllClaims(String token) {
-        return Jwts.parser()
-                .setSigningKey(secretKey)
-                .parseClaimsJws(token)
-                .getBody();
+        byte[] keyBytes = Base64.getDecoder().decode(secretKey);
+        SecretKey key = Keys.hmacShaKeyFor(keyBytes);
+
+        JwtParser parser = Jwts.parserBuilder()
+                .setSigningKey(key)
+                .build();
+
+        return parser.parseClaimsJws(token).getBody();
     }
 
     private boolean isTokenExpired(String token) {

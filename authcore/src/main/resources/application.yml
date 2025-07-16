@@ -43,3 +43,4 @@ auth:
     secure: false       # Set to true in production with HTTPS
     same-site: "Strict" # Prevent CSRF attacks
     max-age: 604800     # 7 days in seconds
+

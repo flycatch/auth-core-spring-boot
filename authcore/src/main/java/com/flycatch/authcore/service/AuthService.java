@@ -32,7 +32,7 @@ public class AuthService {
     }
 
     public Map<String, String> authenticate(String loginId, String password, HttpServletResponse response) {
-        if (authCoreConfig.isEnableLogging()) {
+        if (authCoreConfig.getLogging().isEnabled()) {
             logger.info("Authenticating user: {}", loginId);
         }
 
@@ -47,12 +47,12 @@ public class AuthService {
             String accessToken = jwtUtil.generateAccessToken(user.getUsername(), user.getRoles());
             responseData.put("accessToken", accessToken);
 
-            if (authCoreConfig.isEnableRefreshToken()) {
+            if (authCoreConfig.getRefreshToken().isEnabled()) {
                 String refreshToken = jwtUtil.generateRefreshToken(user.getUsername());
                 responseData.put("refreshToken", refreshToken);
 
-                if (authCoreConfig.isEnableCookies()) {
-                    setCookie(response, authCoreConfig.getCookieName(), refreshToken, authCoreConfig.getCookieMaxAge());
+                if (authCoreConfig.getCookies().isEnabled()) {
+                    setCookie(response, authCoreConfig.getCookies().getName(), refreshToken, authCoreConfig.getCookies().getMaxAge());
                 }
             }
 
@@ -66,9 +66,8 @@ public class AuthService {
         return responseData;
     }
 
-
     public Map<String, String> register(String username, String email, String password) {
-        if (authCoreConfig.isEnableLogging()) {
+        if (authCoreConfig.getLogging().isEnabled()) {
             logger.info("Registering user: username={}, email={}", username, email);
         }
 
@@ -87,9 +86,8 @@ public class AuthService {
         return response;
     }
 
-
     public Map<String, String> refreshAccessToken(String refreshToken, HttpServletResponse response) {
-        if (!authCoreConfig.isEnableRefreshToken()) {
+        if (!authCoreConfig.getRefreshToken().isEnabled()) {
             throw new UnsupportedOperationException("Refresh token is disabled.");
         }
 
@@ -109,12 +107,12 @@ public class AuthService {
         String newAccessToken = jwtUtil.generateAccessToken(username, user.getRoles());
         responseData.put("accessToken", newAccessToken);
 
-        if (authCoreConfig.isEnableRefreshToken()) {
+        if (authCoreConfig.getRefreshToken().isEnabled()) {
             String newRefreshToken = jwtUtil.generateRefreshToken(username);
             responseData.put("refreshToken", newRefreshToken);
 
-            if (authCoreConfig.isEnableCookies()) {
-                setCookie(response, authCoreConfig.getCookieName(), newRefreshToken, authCoreConfig.getCookieMaxAge());
+            if (authCoreConfig.getCookies().isEnabled()) {
+                setCookie(response, authCoreConfig.getCookies().getName(), newRefreshToken, authCoreConfig.getCookies().getMaxAge());
             }
         }
 
@@ -122,7 +120,7 @@ public class AuthService {
     }
 
     public Map<String, String> logout(HttpServletResponse response) {
-        clearCookie(response, authCoreConfig.getCookieName());
+        clearCookie(response, authCoreConfig.getCookies().getName());
 
         Map<String, String> responseData = new HashMap<>();
         responseData.put("message", "LOGOUT_SUCCESS");
@@ -133,8 +131,8 @@ public class AuthService {
 
     private void setCookie(HttpServletResponse response, String name, String value, int maxAge) {
         Cookie cookie = new Cookie(name, value);
-        cookie.setHttpOnly(authCoreConfig.isCookieHttpOnly());
-        cookie.setSecure(authCoreConfig.isCookieSecure());
+        cookie.setHttpOnly(authCoreConfig.getCookies().isHttpOnly());
+        cookie.setSecure(authCoreConfig.getCookies().isSecure());
         cookie.setPath("/");
         cookie.setMaxAge(maxAge);
         response.addCookie(cookie);
@@ -142,8 +140,8 @@ public class AuthService {
 
     private void clearCookie(HttpServletResponse response, String name) {
         Cookie cookie = new Cookie(name, null);
-        cookie.setHttpOnly(authCoreConfig.isCookieHttpOnly());
-        cookie.setSecure(authCoreConfig.isCookieSecure());
+        cookie.setHttpOnly(authCoreConfig.getCookies().isHttpOnly());
+        cookie.setSecure(authCoreConfig.getCookies().isSecure());
         cookie.setPath("/");
         cookie.setMaxAge(0);
         response.addCookie(cookie);

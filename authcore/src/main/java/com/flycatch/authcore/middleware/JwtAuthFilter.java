@@ -38,7 +38,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
-        // Skip the filter for any /auth endpoints
         String path = request.getRequestURI();
         return path.startsWith("/auth");
     }
@@ -50,13 +49,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String token = request.getHeader("Authorization");
 
         if (token != null && token.startsWith("Bearer ")) {
-            token = token.substring(7); // Strip "Bearer "
+            token = token.substring(7);
 
             try {
                 String username = jwtUtil.extractUsername(token);
                 Set<String> roles = jwtUtil.extractRoles(token);
 
-                if (authCoreConfig.isEnableLogging()) {
+                if (authCoreConfig.getLogging().isEnabled()) {
                     logger.info("Processing JWT token for user: {}", username);
                 }
 
@@ -64,12 +63,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                     List<SimpleGrantedAuthority> authorities;
 
-                    if (authCoreConfig.isEnableRbac()) {
+                    if (authCoreConfig.getRbac().isEnabled()) {
                         authorities = roles.stream()
                                 .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
                                 .collect(Collectors.toList());
                     } else {
-                        authorities = List.of(); // Skip RBAC
+                        authorities = List.of();
                     }
 
                     UserDetails userDetails = new User(username, "", authorities);
@@ -81,20 +80,20 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authentication);
 
-                        if (authCoreConfig.isEnableLogging()) {
+                        if (authCoreConfig.getLogging().isEnabled()) {
                             logger.info("User '{}' authenticated via JWT", username);
                         }
                     }
                 }
 
             } catch (ExpiredJwtException e) {
-                if (authCoreConfig.isEnableLogging()) {
+                if (authCoreConfig.getLogging().isEnabled()) {
                     logger.warn("JWT token expired for user: {}", e.getClaims().getSubject());
                 }
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token Expired");
                 return;
             } catch (Exception e) {
-                if (authCoreConfig.isEnableLogging()) {
+                if (authCoreConfig.getLogging().isEnabled()) {
                     logger.error("JWT processing failed: {}", e.getMessage());
                 }
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid Token");

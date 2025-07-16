@@ -45,17 +45,17 @@ public class AuthController {
                 ));
 
             case "refresh":
-                // Check if refresh tokens are enabled
-                if (!authCoreConfig.isEnableRefreshToken()) {
+                if (!authCoreConfig.getRefreshToken().isEnabled()) {
                     return ResponseEntity.badRequest().body(Map.of("error", "Refresh token is disabled"));
                 }
 
-                // Extract refresh token from cookies
-                String refreshToken = getCookieValue(httpRequest, authCoreConfig.getCookieName());
+                String refreshToken = getCookieValue(httpRequest, authCoreConfig.getCookies().getName());
                 if (refreshToken == null) {
                     return ResponseEntity.badRequest().body(Map.of("error", "Missing refresh token in cookies"));
                 }
+
                 return ResponseEntity.ok(authService.refreshAccessToken(refreshToken, httpResponse));
+
 
             case "oauth2":
                 Authentication auth = SecurityContextHolder.getContext().getAuthentication();

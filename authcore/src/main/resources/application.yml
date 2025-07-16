@@ -1,39 +1,45 @@
 auth:
-  enable-jwt: true
-  enable-session: true
-  enable-oauth2: false
-  enable-rbac: true
-  enable-refresh-token: true
-  enable-logging: true
-  enable-cookies: true  # Enable cookies for storing refresh tokens
-  cookie-name: "AuthRefreshToken"  # Cookie name
-  cookie-http-only: true  # Prevent JavaScript access (recommended for security)
-  cookie-secure: false  # Set to true in production with HTTPS
-  cookie-same-site: "Strict"  # Prevent CSRF attacks
-  cookie-max-age: 604800  # 7 days in seconds
+  jwt:
+    enabled: true
+    secret: "Gm/dZyJQfEJxC0tDdHlQYxZxVa4vX2RkYXJrbmV0VmFsaWRLZXlNYWtlU3VyZQ=="
+    access-token-expiration: 86400000  # 24 hours
+    refresh-token-expiration: 604800000  # 7 days
 
-jwt:
-  secret: "Gm/dZyJQfEJxC0tDdHlQYxZxVa4vX2RkYXJrbmV0VmFsaWRLZXlNYWtlU3VyZQ=="
-  access-token-expiration: 86400000  # 24 hours
-  refresh-token-expiration: 604800000  # 7 days
-
-spring:
   session:
+    enabled: true
     store-type: jdbc  # Store session in the database
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            client-id: YOUR_GOOGLE_CLIENT_ID
-            client-secret: YOUR_GOOGLE_CLIENT_SECRET
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
-            scope:
-              - email
-              - profile
-        provider:
-          google:
-            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
-            token-uri: https://oauth2.googleapis.com/token
-            user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
-            user-name-attribute: sub
+
+  oauth2:
+    enabled: false
+    client:
+      registration:
+        google:
+          client-id: YOUR_GOOGLE_CLIENT_ID
+          client-secret: YOUR_GOOGLE_CLIENT_SECRET
+          redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+          scope:
+            - email
+            - profile
+      provider:
+        google:
+          authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+          token-uri: https://oauth2.googleapis.com/token
+          user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+          user-name-attribute: sub
+
+  rbac:
+    enabled: true
+
+  refresh-token:
+    enabled: true
+
+  logging:
+    enabled: true
+
+  cookies:
+    enabled: true
+    name: "AuthRefreshToken"
+    http-only: true     # Prevent JavaScript access (recommended for security)
+    secure: false       # Set to true in production with HTTPS
+    same-site: "Strict" # Prevent CSRF attacks
+    max-age: 604800     # 7 days in seconds

@@ -18,6 +18,7 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final AuthCoreConfig authCoreConfig;
+
     public SecurityConfig(JwtAuthFilter jwtAuthFilter, AuthCoreConfig authCoreConfig) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.authCoreConfig = authCoreConfig;
@@ -32,7 +33,7 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 );
 
-        if (authCoreConfig.isEnableSession()) {
+        if (authCoreConfig.getSession().isEnabled()) {
             http.sessionManagement(session -> session
                     .maximumSessions(1)
             );
@@ -42,13 +43,11 @@ public class SecurityConfig {
             );
         }
 
-        // Conditional JWT filter
-        if (authCoreConfig.isEnableJwt()) {
+        if (authCoreConfig.getJwt().isEnabled()) {
             http.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         }
 
-        // Conditional OAuth2 login
-        if (authCoreConfig.isEnableOAuth2()) {
+        if (authCoreConfig.getOauth2().isEnabled()) {
             http.oauth2Login(oauth2 -> oauth2
                     .defaultSuccessUrl("/oauth2/success", true)
             );
@@ -56,8 +55,6 @@ public class SecurityConfig {
 
         return http.build();
     }
-
-
 
     @Bean
     public PasswordEncoder passwordEncoder() {

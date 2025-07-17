@@ -27,7 +27,7 @@ public class JwtUtil {
     private long refreshTokenExpiration;
 
     public String generateAccessToken(String username, Set<String> roles) {
-        return generateToken(username, accessTokenExpiration, roles);
+        return generateToken(username, accessTokenExpiration, null);
     }
 
     public String generateRefreshToken(String username) {
@@ -36,9 +36,6 @@ public class JwtUtil {
 
     private String generateToken(String username, long expirationTime, Set<String> roles) {
         Map<String, Object> claims = new HashMap<>();
-        if (roles != null) {
-            claims.put("roles", roles);
-        }
         byte[] keyBytes = Base64.getDecoder().decode(secretKey);
         Key key = new SecretKeySpec(keyBytes, SignatureAlgorithm.HS256.getJcaName());
 

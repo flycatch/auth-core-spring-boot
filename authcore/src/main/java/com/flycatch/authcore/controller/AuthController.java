@@ -56,23 +56,6 @@ public class AuthController {
 
                 return ResponseEntity.ok(authService.refreshAccessToken(refreshToken, httpResponse));
 
-
-            case "oauth2":
-                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-                if (auth == null || !auth.isAuthenticated()) {
-                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Not authenticated"));
-                }
-
-                Map<String, Object> oauthInfo = new HashMap<>();
-                oauthInfo.put("username", auth.getName());
-                oauthInfo.put("authorities", auth.getAuthorities());
-
-                if (auth.getPrincipal() instanceof OAuth2User oAuth2User) {
-                    oauthInfo.put("attributes", oAuth2User.getAttributes());
-                }
-
-                return ResponseEntity.ok(oauthInfo);
-
             case "logout":
                 return ResponseEntity.ok(authService.logout(httpResponse));
 

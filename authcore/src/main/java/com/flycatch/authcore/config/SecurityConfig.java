@@ -47,11 +47,6 @@ public class SecurityConfig {
             http.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         }
 
-        if (authCoreConfig.getOauth2().isEnabled()) {
-            http.oauth2Login(oauth2 -> oauth2
-                    .defaultSuccessUrl("/oauth2/success", true)
-            );
-        }
 
         return http.build();
     }

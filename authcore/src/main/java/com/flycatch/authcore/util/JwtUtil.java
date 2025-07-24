@@ -1,11 +1,11 @@
 package com.flycatch.authcore.util;
 
+import com.flycatch.authcore.config.AuthCoreConfig;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -17,25 +17,22 @@ import java.util.function.Function;
 @Component
 public class JwtUtil {
 
-    @Value("${auth.jwt.secret}")
-    private String secretKey;
+    private final AuthCoreConfig.Jwt jwtConfig;
 
-    @Value("${auth.jwt.access-token-expiration}")
-    private long accessTokenExpiration;
-
-    @Value("${auth.jwt.refresh-token-expiration}")
-    private long refreshTokenExpiration;
+    public JwtUtil(AuthCoreConfig authCoreConfig) {
+        this.jwtConfig = authCoreConfig.getJwt();
+    }
 
     public String generateAccessToken(String username, Map<String, Object> claims) {
-        return generateToken(username, accessTokenExpiration, claims);
+        return generateToken(username, jwtConfig.getAccessTokenExpiration(), claims);
     }
 
     public String generateRefreshToken(String username) {
-        return generateToken(username, refreshTokenExpiration, new HashMap<>());
+        return generateToken(username, jwtConfig.getRefreshTokenExpiration(), new HashMap<>());
     }
 
     private String generateToken(String username, long expirationTime, Map<String, Object> claims) {
-        byte[] keyBytes = Base64.getDecoder().decode(secretKey);
+        byte[] keyBytes = Base64.getDecoder().decode(jwtConfig.getSecret());
         Key key = new SecretKeySpec(keyBytes, SignatureAlgorithm.HS256.getJcaName());
 
         return Jwts.builder()
@@ -71,7 +68,7 @@ public class JwtUtil {
 
     // made public so other classes like JwtAuthFilter can use it
     public Claims extractAllClaims(String token) {
-        byte[] keyBytes = Base64.getDecoder().decode(secretKey);
+        byte[] keyBytes = Base64.getDecoder().decode(jwtConfig.getSecret());
         SecretKey key = Keys.hmacShaKeyFor(keyBytes);
 
         JwtParser parser = Jwts.parserBuilder()

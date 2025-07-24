@@ -63,19 +63,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                     List<SimpleGrantedAuthority> authorities;
 
-                    if (authCoreConfig.getRbac().isEnabled()) {
-                        authorities = roles.stream()
-                                .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
-                                .collect(Collectors.toList());
-                    } else {
-                        authorities = List.of();
-                    }
-
-                    UserDetails userDetails = new User(username, "", authorities);
+                    authorities = List.of();
+                   UserDetails userDetails = new User(username, "", authorities);
 
                     if (jwtUtil.validateToken(token, username)) {
                         UsernamePasswordAuthenticationToken authentication =
-                                new UsernamePasswordAuthenticationToken(userDetails, null, authorities);
+                                new UsernamePasswordAuthenticationToken(userDetails, null);
 
                         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authentication);

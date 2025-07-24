@@ -1,11 +1,9 @@
 package com.flycatch.authcore.service;
 
-import com.flycatch.authcore.model.AuthCoreUser;
-
 import java.util.Optional;
 
 public interface AuthCoreUserService {
-    Optional<? extends AuthCoreUser> findByUsername(String username);
-    Optional<? extends AuthCoreUser> findByEmail(String email);
-    AuthCoreUser save(String username, String email, String encodedPassword);
+    Optional<Object> findByUsername(String username);
+    Optional<Object> findByEmail(String email);
+    Object save(String username, String email, String encodedPassword);
 }

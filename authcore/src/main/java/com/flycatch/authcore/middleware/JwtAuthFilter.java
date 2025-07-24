@@ -1,6 +1,7 @@
 package com.flycatch.authcore.middleware;
 
 import com.flycatch.authcore.config.AuthCoreConfig;
+import com.flycatch.authcore.spi.JwtClaimsProvider;
 import com.flycatch.authcore.util.JwtUtil;
 import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.servlet.FilterChain;
@@ -10,18 +11,15 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.Collection;
+import java.util.Map;
 
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
@@ -30,10 +28,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final AuthCoreConfig authCoreConfig;
+    private final JwtClaimsProvider claimsProvider;
 
-    public JwtAuthFilter(JwtUtil jwtUtil, AuthCoreConfig authCoreConfig) {
+    public JwtAuthFilter(JwtUtil jwtUtil, AuthCoreConfig authCoreConfig, JwtClaimsProvider claimsProvider) {
         this.jwtUtil = jwtUtil;
         this.authCoreConfig = authCoreConfig;
+        this.claimsProvider = claimsProvider;
     }
 
     @Override
@@ -53,29 +53,18 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
             try {
                 String username = jwtUtil.extractUsername(token);
-                Set<String> roles = jwtUtil.extractRoles(token);
+                Map<String, Object> claims = jwtUtil.extractAllClaims(token);
 
                 if (authCoreConfig.getLogging().isEnabled()) {
                     logger.info("Processing JWT token for user: {}", username);
                 }
 
                 if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-
-                    List<SimpleGrantedAuthority> authorities;
-
-                    if (authCoreConfig.getRbac().isEnabled()) {
-                        authorities = roles.stream()
-                                .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
-                                .collect(Collectors.toList());
-                    } else {
-                        authorities = List.of();
-                    }
-
-                    UserDetails userDetails = new User(username, "", authorities);
-
                     if (jwtUtil.validateToken(token, username)) {
+                        Collection<? extends GrantedAuthority> authorities = claimsProvider.extractAuthorities(claims);
+
                         UsernamePasswordAuthenticationToken authentication =
-                                new UsernamePasswordAuthenticationToken(userDetails, null, authorities);
+                                new UsernamePasswordAuthenticationToken(username, null, authorities);
 
                         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authentication);

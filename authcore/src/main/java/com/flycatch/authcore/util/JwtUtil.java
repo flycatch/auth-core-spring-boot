@@ -26,16 +26,15 @@ public class JwtUtil {
     @Value("${auth.jwt.refresh-token-expiration}")
     private long refreshTokenExpiration;
 
-    public String generateAccessToken(String username, Set<String> roles) {
-        return generateToken(username, accessTokenExpiration, null);
+    public String generateAccessToken(String username, Map<String, Object> claims) {
+        return generateToken(username, accessTokenExpiration, claims);
     }
 
     public String generateRefreshToken(String username) {
-        return generateToken(username, refreshTokenExpiration, null);
+        return generateToken(username, refreshTokenExpiration, new HashMap<>());
     }
 
-    private String generateToken(String username, long expirationTime, Set<String> roles) {
-        Map<String, Object> claims = new HashMap<>();
+    private String generateToken(String username, long expirationTime, Map<String, Object> claims) {
         byte[] keyBytes = Base64.getDecoder().decode(secretKey);
         Key key = new SecretKeySpec(keyBytes, SignatureAlgorithm.HS256.getJcaName());
 
@@ -57,17 +56,8 @@ public class JwtUtil {
         return extractClaim(token, Claims::getSubject);
     }
 
-    public Set<String> extractRoles(String token) {
-        final Claims claims = extractAllClaims(token);
-        Object roles = claims.get("roles");
-        if (roles instanceof List<?>) {
-            Set<String> roleSet = new HashSet<>();
-            for (Object role : (List<?>) roles) {
-                roleSet.add(String.valueOf(role));
-            }
-            return roleSet;
-        }
-        return Set.of();
+    public Map<String, Object> extractAllClaimsAsMap(String token) {
+        return new HashMap<>(extractAllClaims(token));
     }
 
     public Date extractExpiration(String token) {

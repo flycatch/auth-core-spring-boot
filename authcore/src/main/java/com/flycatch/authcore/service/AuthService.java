@@ -1,7 +1,7 @@
 package com.flycatch.authcore.service;
 
 import com.flycatch.authcore.config.AuthCoreConfig;
-import com.flycatch.authcore.model.AuthCoreUser;
+import com.flycatch.authcore.spi.JwtClaimsProvider;
 import com.flycatch.authcore.util.JwtUtil;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
@@ -23,12 +23,15 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthCoreConfig authCoreConfig;
+    private final JwtClaimsProvider claimsProvider;
 
-    public AuthService(AuthCoreUserService userService, PasswordEncoder passwordEncoder, JwtUtil jwtUtil, AuthCoreConfig authCoreConfig) {
+    public AuthService(AuthCoreUserService userService, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,
+                       AuthCoreConfig authCoreConfig, JwtClaimsProvider claimsProvider) {
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.authCoreConfig = authCoreConfig;
+        this.claimsProvider = claimsProvider;
     }
 
     public Map<String, String> authenticate(String loginId, String password, HttpServletResponse response) {
@@ -36,33 +39,31 @@ public class AuthService {
             logger.info("Authenticating user: {}", loginId);
         }
 
-        Optional<? extends AuthCoreUser> userOpt =
-                loginId.contains("@") ? userService.findByEmail(loginId)
-                        : userService.findByUsername(loginId);
-
+        Optional<Object> userOpt = loginId.contains("@") ? userService.findByEmail(loginId) : userService.findByUsername(loginId);
         Map<String, String> responseData = new HashMap<>();
 
-        if (userOpt.isPresent() && passwordEncoder.matches(password, userOpt.get().getPassword())) {
-            AuthCoreUser user = userOpt.get();
-            String accessToken = jwtUtil.generateAccessToken(user.getUsername(), user.getRoles());
-            responseData.put("accessToken", accessToken);
+        if (userOpt.isPresent()) {
+            Object user = userOpt.get();
+            String storedPassword = claimsProvider.extractPassword(user);
+            String username = claimsProvider.extractUsername(user);
 
-            if (authCoreConfig.getRefreshToken().isEnabled()) {
-                String refreshToken = jwtUtil.generateRefreshToken(user.getUsername());
-                responseData.put("refreshToken", refreshToken);
+            if (passwordEncoder.matches(password, storedPassword)) {
+                String accessToken = jwtUtil.generateAccessToken(username, claimsProvider.extractClaims(user));
+                responseData.put("accessToken", accessToken);
 
-                if (authCoreConfig.getCookies().isEnabled()) {
-                    setCookie(response, authCoreConfig.getCookies().getName(), refreshToken, authCoreConfig.getCookies().getMaxAge());
+                if (authCoreConfig.getRefreshToken().isEnabled()) {
+                    String refreshToken = jwtUtil.generateRefreshToken(username);
+                    responseData.put("refreshToken", refreshToken);
+
+                    if (authCoreConfig.getCookies().isEnabled()) {
+                        setCookie(response, authCoreConfig.getCookies().getName(), refreshToken, authCoreConfig.getCookies().getMaxAge());
+                    }
                 }
+                responseData.put("message", "JWT_AUTHENTICATED");
+                return responseData;
             }
-
-            responseData.put("message", "JWT_AUTHENTICATED");
-            logger.info("User '{}' authenticated successfully.", loginId);
-        } else {
-            responseData.put("message", "INVALID_CREDENTIALS");
-            logger.warn("Authentication failed for user: {}", loginId);
         }
-
+        responseData.put("message", "INVALID_CREDENTIALS");
         return responseData;
     }
 
@@ -98,13 +99,13 @@ public class AuthService {
             throw new IllegalArgumentException("Invalid refresh token");
         }
 
-        Optional<? extends AuthCoreUser> userOpt = userService.findByUsername(username);
+        Optional<Object> userOpt = userService.findByUsername(username);
         if (userOpt.isEmpty()) {
             throw new IllegalArgumentException("User not found for refresh token");
         }
 
-        AuthCoreUser user = userOpt.get();
-        String newAccessToken = jwtUtil.generateAccessToken(username, user.getRoles());
+        Object user = userOpt.get();
+        String newAccessToken = jwtUtil.generateAccessToken(username, claimsProvider.extractClaims(user));
         responseData.put("accessToken", newAccessToken);
 
         if (authCoreConfig.getRefreshToken().isEnabled()) {

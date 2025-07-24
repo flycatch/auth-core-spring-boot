@@ -69,7 +69,8 @@ public class JwtUtil {
         return claimsResolver.apply(claims);
     }
 
-    private Claims extractAllClaims(String token) {
+    // made public so other classes like JwtAuthFilter can use it
+    public Claims extractAllClaims(String token) {
         byte[] keyBytes = Base64.getDecoder().decode(secretKey);
         SecretKey key = Keys.hmacShaKeyFor(keyBytes);
 

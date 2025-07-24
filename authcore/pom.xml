@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.flycatch</groupId>
 	<artifactId>authcore</artifactId>
-	<version>0.4.6-SNAPSHOT</version>
+	<version>0.5.8-SNAPSHOT</version>
 	<name>authcore</name>
 	<description>Authcore project for Spring Boot</description>
 	<url/>

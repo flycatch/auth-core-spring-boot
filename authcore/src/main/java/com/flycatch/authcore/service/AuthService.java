@@ -4,6 +4,7 @@ import com.flycatch.authcore.config.AuthCoreConfig;
 import com.flycatch.authcore.spi.JwtClaimsProvider;
 import com.flycatch.authcore.util.JwtUtil;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +35,8 @@ public class AuthService {
         this.claimsProvider = claimsProvider;
     }
 
-    public Map<String, String> authenticate(String loginId, String password, HttpServletResponse response) {
+    // add HttpServletRequest as argument
+    public Map<String, String> authenticate(String loginId, String password, HttpServletResponse response, HttpServletRequest request) {
         if (authCoreConfig.getLogging().isEnabled()) {
             logger.info("Authenticating user: {}", loginId);
         }
@@ -48,6 +50,15 @@ public class AuthService {
             String username = claimsProvider.extractUsername(user);
 
             if (passwordEncoder.matches(password, storedPassword)) {
+
+                if (authCoreConfig.getSession().isEnabled()) {
+                    // Save user in session
+                    request.getSession(true).setAttribute("USER", user);
+                    responseData.put("message", "SESSION_AUTHENTICATED");
+                    return responseData;
+                }
+
+                //  If not session, fallback to JWT
                 String accessToken = jwtUtil.generateAccessToken(username, claimsProvider.extractClaims(user));
                 responseData.put("accessToken", accessToken);
 
@@ -59,13 +70,16 @@ public class AuthService {
                         setCookie(response, authCoreConfig.getCookies().getName(), refreshToken, authCoreConfig.getCookies().getMaxAge());
                     }
                 }
+
                 responseData.put("message", "JWT_AUTHENTICATED");
                 return responseData;
             }
         }
+
         responseData.put("message", "INVALID_CREDENTIALS");
         return responseData;
     }
+
 
     public Map<String, String> register(String username, String email, String password) {
         if (authCoreConfig.getLogging().isEnabled()) {

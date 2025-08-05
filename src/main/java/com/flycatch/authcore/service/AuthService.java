@@ -3,6 +3,7 @@ package com.flycatch.authcore.service;
 import com.flycatch.authcore.config.AuthCoreConfig;
 import com.flycatch.authcore.spi.JwtClaimsProvider;
 import com.flycatch.authcore.util.JwtUtil;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -35,13 +36,22 @@ public class AuthService {
         this.claimsProvider = claimsProvider;
     }
 
-    // add HttpServletRequest as argument
+    @PostConstruct
+    public void validateAuthMode() {
+        if (!authCoreConfig.getJwt().isEnabled() && !authCoreConfig.getSession().isEnabled()) {
+            throw new IllegalStateException("Both JWT and Session authentication are disabled. Please enable at least one in config.");
+        }
+    }
+
     public Map<String, String> authenticate(String loginId, String password, HttpServletResponse response, HttpServletRequest request) {
         if (authCoreConfig.getLogging().isEnabled()) {
             logger.info("Authenticating user: {}", loginId);
         }
 
-        Optional<Object> userOpt = loginId.contains("@") ? userService.findByEmail(loginId) : userService.findByUsername(loginId);
+        Optional<Object> userOpt = loginId.contains("@")
+                ? userService.findByEmail(loginId)
+                : userService.findByUsername(loginId);
+
         Map<String, String> responseData = new HashMap<>();
 
         if (userOpt.isPresent()) {
@@ -51,35 +61,39 @@ public class AuthService {
 
             if (passwordEncoder.matches(password, storedPassword)) {
 
+                // Session enabled
                 if (authCoreConfig.getSession().isEnabled()) {
-                    // Save user in session
                     request.getSession(true).setAttribute("USER", user);
                     responseData.put("message", "SESSION_AUTHENTICATED");
                     return responseData;
                 }
 
-                //  If not session, fallback to JWT
-                String accessToken = jwtUtil.generateAccessToken(username, claimsProvider.extractClaims(user));
-                responseData.put("accessToken", accessToken);
+                //  JWT enabled
+                if (authCoreConfig.getJwt().isEnabled()) {
+                    String accessToken = jwtUtil.generateAccessToken(username, claimsProvider.extractClaims(user));
+                    responseData.put("accessToken", accessToken);
 
-                if (authCoreConfig.getRefreshToken().isEnabled()) {
-                    String refreshToken = jwtUtil.generateRefreshToken(username);
-                    responseData.put("refreshToken", refreshToken);
+                    if (authCoreConfig.getRefreshToken().isEnabled()) {
+                        String refreshToken = jwtUtil.generateRefreshToken(username);
+                        responseData.put("refreshToken", refreshToken);
 
-                    if (authCoreConfig.getCookies().isEnabled()) {
-                        setCookie(response, authCoreConfig.getCookies().getName(), refreshToken, authCoreConfig.getCookies().getMaxAge());
+                        if (authCoreConfig.getCookies().isEnabled()) {
+                            setCookie(response, authCoreConfig.getCookies().getName(), refreshToken, authCoreConfig.getCookies().getMaxAge());
+                        }
                     }
+
+                    responseData.put("message", "JWT_AUTHENTICATED");
+                    return responseData;
                 }
 
-                responseData.put("message", "JWT_AUTHENTICATED");
-                return responseData;
+                // Should never reach here due to PostConstruct check, but safe fallback
+                throw new IllegalStateException("No authentication mechanism enabled.");
             }
         }
 
         responseData.put("message", "INVALID_CREDENTIALS");
         return responseData;
     }
-
 
     public Map<String, String> register(String username, String email, String password) {
         if (authCoreConfig.getLogging().isEnabled()) {
@@ -104,6 +118,10 @@ public class AuthService {
     public Map<String, String> refreshAccessToken(String refreshToken, HttpServletResponse response) {
         if (!authCoreConfig.getRefreshToken().isEnabled()) {
             throw new UnsupportedOperationException("Refresh token is disabled.");
+        }
+
+        if (!authCoreConfig.getJwt().isEnabled()) {
+            throw new IllegalStateException("JWT is disabled. Cannot refresh token.");
         }
 
         Map<String, String> responseData = new HashMap<>();

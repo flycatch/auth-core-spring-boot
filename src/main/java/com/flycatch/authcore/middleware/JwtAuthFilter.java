@@ -61,10 +61,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     if (jwtUtil.validateToken(token, username)) {
-                        Collection<? extends GrantedAuthority> authorities = claimsProvider.extractAuthorities(claims);
+                       // Collection<? extends GrantedAuthority> authorities = claimsProvider.extractAuthorities(claims);
 
                         UsernamePasswordAuthenticationToken authentication =
-                                new UsernamePasswordAuthenticationToken(username, null, authorities);
+                                new UsernamePasswordAuthenticationToken(username, null, null);
 
                         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authentication);

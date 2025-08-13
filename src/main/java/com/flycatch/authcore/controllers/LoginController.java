@@ -1,48 +1,56 @@
 package com.flycatch.authcore.controllers;
 
-import com.flycatch.authcore.service.LoginService;
+import com.flycatch.authcore.dto.request.LoginRequest;
+import com.flycatch.authcore.dto.response.AuthResponse;
+import com.flycatch.authcore.dto.response.MessageResponse;
+import com.flycatch.authcore.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.validation.constraints.NotBlank;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-/** This controller can be extended to handle login, registration, and other auth-related endpoints.
-  * Currently, it serves as a placeholder to ensure the auth module
-  * is enabled when the property is set.*/
+import java.util.Map;
 
+/**
+ * White-label Login — uses AuthService for consistency with refresh/logout.
+ * Enable via: auth.endpoints.login-enabled: true
+ */
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "auth", name = "login", havingValue = "true")
-public class LoginController {    private final LoginService loginService;
+@ConditionalOnProperty(prefix = "auth.endpoints", name = "login-enabled", havingValue = "true", matchIfMissing = false)
+public class LoginController {
 
-     @PostMapping("/login")
-     public ResponseEntity<LoginResponse> login(
-             @RequestBody LoginRequest request,
-             HttpServletResponse response
-     ) {
-         String token = loginService.login(request.getLoginId(), request.getPassword(), response);
-         return ResponseEntity.ok(new LoginResponse(token));
-     }
+    private final AuthService authService;
 
-     // Request DTO
-     @Getter
-     public static class LoginRequest {
-         @NotBlank
-         private String loginId;
-         @NotBlank
-         private String password;
-     }
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@RequestBody LoginRequest request,
+                                   HttpServletRequest httpRequest,
+                                   HttpServletResponse httpResponse) {
 
-     // Response DTO
-     @Getter
-     public static class LoginResponse {
-         private final String token;
-         public LoginResponse(String token) {
-             this.token = token;
-         }
-     }
+        String loginId = firstNonBlank(request.getLoginId(), request.getUsername(), request.getEmail());
+        if (isBlank(loginId) || isBlank(request.getPassword())) {
+            return ResponseEntity.badRequest().body(new MessageResponse("LOGIN_ID_AND_PASSWORD_REQUIRED"));
+        }
+
+        Map<String, String> result = authService.authenticate(
+                loginId, request.getPassword(), httpResponse, httpRequest
+        );
+
+        return ResponseEntity.ok(new AuthResponse(
+                result.get("accessToken"),
+                result.get("refreshToken"),
+                result.getOrDefault("message", "OK")
+        ));
+    }
+
+    private static String firstNonBlank(String... vals) {
+        if (vals == null) return null;
+        for (String v : vals) if (!isBlank(v)) return v;
+        return null;
+    }
+
+    private static boolean isBlank(String s) { return s == null || s.isBlank(); }
 }

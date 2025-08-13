@@ -1,56 +1,78 @@
 package com.flycatch.authcore.config;
 
+import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
 
+/**
+ * Pure properties holder. Client app controls everything via application.yml.
+ */
 @Setter
 @Getter
-@Configuration
 @ConfigurationProperties(prefix = "auth")
 public class AuthCoreConfig {
-    private Jwt jwt;
-    private Session session;
-    private Logging logging;
-    private Cookies cookies;
 
-    @Setter
-    @Getter
+    private Jwt jwt = new Jwt();
+    private Session session = new Session();
+    private Logging logging = new Logging();
+    private Cookies cookies = new Cookies();
+
+    /** Legacy support: auth.refresh-token.enabled */
+    private RefreshToken refreshToken = new RefreshToken();
+
+    /** Endpoint toggles for white-label controllers */
+    private Endpoints endpoints = new Endpoints();
+
+    @Setter @Getter
     public static class Jwt {
-        private boolean enabled;
+        private boolean enabled = true;
         private String secret;
-        private long accessTokenExpiration;
-        private long refreshTokenExpiration;
-        private boolean refreshTokenEnabled;
-
+        /** Expirations in milliseconds to match YAML usage */
+        private long accessTokenExpiration = 900_000;          // 15m
+        private long refreshTokenExpiration = 2_592_000_000L;  // 30d
+        private boolean refreshTokenEnabled = false;
     }
 
-    @Setter
-    @Getter
+    @Setter @Getter
     public static class Session {
-        private boolean enabled;
-        private String storeType;
-
+        private boolean enabled = false;
+        private String storeType = "jdbc"; // jdbc | redis | none
     }
 
-
-    @Setter
-    @Getter
+    @Setter @Getter
     public static class Logging {
-        private boolean enabled;
-
+        private boolean enabled = false;
     }
 
-    @Setter
-    @Getter
+    @Setter @Getter
     public static class Cookies {
-        private boolean enabled;
-        private String name;
-        private boolean httpOnly;
-        private boolean secure;
-        private String sameSite;
-        private int maxAge;
+        private boolean enabled = false;
+        private String name = "AuthRefreshToken";
+        private boolean httpOnly = true;
+        private boolean secure = false;
+        private String sameSite = "Strict"; // Strict | Lax | None
+        private int maxAge = 604800; // seconds (7 days)
+    }
 
+    @Setter @Getter
+    public static class RefreshToken {
+        /** Legacy flag location (back-compat) */
+        private boolean enabled = false;
+    }
+
+    @Setter @Getter
+    public static class Endpoints {
+        private boolean loginEnabled = false;
+        private boolean refreshEnabled = false;
+        private boolean logoutEnabled = false;
+    }
+
+    /** Sync legacy refresh toggle with modern flag */
+    @PostConstruct
+    public void syncLegacyRefresh() {
+        if (this.refreshToken != null && this.refreshToken.isEnabled() && !this.jwt.isRefreshTokenEnabled()) {
+            this.jwt.setRefreshTokenEnabled(true);
+        }
     }
 }

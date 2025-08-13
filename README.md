@@ -1,185 +1,206 @@
-# AuthCore - Spring Boot Authentication Core Library
+# AuthCore – Spring Boot Authentication Core
 
-`authcore` is a modular and extensible authentication library for Spring Boot projects. It supports both **JWT-based** and **Session-based** authentication with refresh token support, cookies, and fully pluggable SPI interfaces.
+AuthCore is a Spring Boot library that provides a configurable authentication layer supporting:
+
+- **JWT** (stateless) authentication with access/refresh tokens
+- **Optional refresh-token cookies** (HttpOnly, SameSite, Secure)
+- **Session** (stateful) authentication using Spring Session
+- **White-label endpoints** for login, refresh, and logout that can be enabled/disabled per application properties
+- A simple **SPI** to add custom JWT claims
+
+It is designed to be embedded as a dependency in client apps. Clients choose their auth mode and behavior using only `application.yml`—no code changes required. Clients may also disable the built-in endpoints and implement their own controllers while reusing AuthCore services.
 
 ---
 
-## 📦 Local Dependency Setup (Development Only)
+## Requirements
 
-To use the library locally in your Spring Boot project:
+- Java 17+
+- Spring Boot 3.4.x
+- A `UserDetailsService` bean in the client application
+- For session mode with JDBC store: `spring-session-jdbc` and a datasource
 
-### 1. Clone the repository
+---
 
-```bash
-git clone https://github.com/flycatch/auth-core-spring-boot.git
-```
-
-### 2. Install it into your local Maven repository
-
-```bash
-cd auth-core-spring-boot
-mvn clean install
-```
-
-### 3. Add the dependency in your project’s `pom.xml`
+## Installation (Maven)
 
 ```xml
 <dependency>
   <groupId>io.github.flycatch</groupId>
   <artifactId>authcore</artifactId>
-  <version>0.7.5-SNAPSHOT</version>
+  <version>1.0.0</version>
 </dependency>
 ```
 
+> AuthCore is a library (no `main`), published for use in other Spring Boot apps.
+
 ---
 
-## ⚙️ Configuration (`application.yml`)
+## Quick Start
+
+1. Add the dependency above.
+2. Ensure your app provides a `UserDetailsService` that can load users by username or email.
+3. Pick your auth mode in `application.yml`:
+    - **JWT mode** (stateless): `auth.jwt.enabled: true`, `auth.session.enabled: false`
+    - **Session mode** (stateful): `auth.session.enabled: true`, `auth.jwt.enabled: false`
+4. (JWT mode) Provide a **Base64-encoded 256-bit secret**.
+
+Run the app. The white-label endpoints are auto-configured and available under `/auth/*` when enabled.
+
+---
+
+## Configuration Reference (`application.yml`)
+
+AuthCore is driven entirely by configuration. All properties live under the `auth` prefix.
 
 ```yaml
 auth:
   jwt:
     enabled: true
-    secret: "Gm/dZyJQfEJxC0tDdHlQYxZxVa4vX2RkYXJrbmV0VmFsaWRLZXlNYWtlU3VyZQ=="
-    access-token-expiration: 86400000        # 24 hours
-    refresh-token-expiration: 604800000      # 7 days
+    secret: "base64Url_32byte_key_here"
+    access-token-expiration: 86400000
+    refresh-token-expiration: 604800000
+    refresh-token-enabled: true
 
   session:
-    enabled: true
-    store-type: jdbc                         # Supported: jdbc, none
-
-  refresh-token:
-    enabled: true
-
-  logging:
-    enabled: true
+    enabled: false
 
   cookies:
     enabled: true
     name: "AuthRefreshToken"
     http-only: true
-    secure: false                            # Set true in production with HTTPS
+    secure: false
     same-site: "Strict"
     max-age: 604800
+
+  logging:
+    enabled: true
+
+  endpoints:
+    login-enabled: true
+    refresh-enabled: true
+    logout-enabled: true
+```
+
+### Spring infrastructure (example)
+```yaml
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+  session:
+    store-type: jdbc
+    jdbc:
+      initialize-schema: always
 ```
 
 ---
 
-## 🔌 Required SPI Implementations
+## What AuthCore Auto-Configures
 
-### 1. `AuthCoreUserService`
+- **SecurityFilterChain**
+- **PasswordEncoder**: `BCryptPasswordEncoder`.
+- **AuthCoreConfig**: binds all `auth.*` properties.
+- **Controllers** (white-label) if enabled:
+    - `POST /auth/login`
+    - `POST /auth/refresh` (JWT mode)
+    - `POST /auth/logout`
+- **Services**
+    - `AuthService`
 
-```java
-@Service
-public class MyUserService implements AuthCoreUserService {
-    @Autowired
-    private UserRepository userRepository;
+---
 
-    @Override
-    public Optional<Object> findByUsername(String username) {
-        return Optional.ofNullable(userRepository.findByUsername(username));
-    }
+## Endpoints (White-Label)
 
-    @Override
-    public Optional<Object> findByEmail(String email) {
-        return Optional.ofNullable(userRepository.findByEmail(email));
-    }
-
-    @Override
-    public Object save(String username, String email, String encodedPassword) {
-        return userRepository.save(new User(username, email, encodedPassword));
-    }
-}
+### `POST /auth/login`
+```json
+{ "username": "testuser", "password": "testpass" }
 ```
 
-### 2. `JwtClaimsProvider`
+### `POST /auth/refresh` (JWT mode)
+```json
+{ "refreshToken": "..." }
+```
+
+### `POST /auth/logout`
+```json
+{ "message": "LOGOUT_SUCCESS" }
+```
+
+---
+
+## SPI: Add Custom JWT Claims
 
 ```java
 @Component
-public class MyClaimsProvider implements JwtClaimsProvider {
-
-    @Override
-    public String extractUsername(Object user) {
-        return ((User) user).getUsername();
-    }
-
-    @Override
-    public String extractPassword(Object user) {
-        return ((User) user).getPassword();
-    }
-
-    @Override
-    public Map<String, Object> extractClaims(Object user) {
-        User u = (User) user;
-        return Map.of("username", u.getUsername(), "email", u.getEmail());
-    }
-
-    @Override
-    public Collection<? extends GrantedAuthority> extractAuthorities(Map<String, Object> claims) {
-        return Collections.emptyList(); // Add role mapping if needed
-    }
+public class AppJwtClaimsProvider implements JwtClaimsProvider {
+  @Override
+  public Map<String, Object> extractClaims(UserDetails user) {
+    Map<String, Object> claims = new HashMap<>();
+    claims.put("username", user.getUsername());
+    return claims;
+  }
 }
 ```
 
 ---
 
-## 🚀 Sample Usage in Controller
+## Using AuthCore With Your Own Controllers
 
-```java
-@RestController
-@RequestMapping("/auth")
-public class AuthController {
+Disable endpoints and call `AuthService` directly.
 
-    @Autowired
-    private AuthService authService;
+---
 
-    @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest req,
-                                   HttpServletResponse response,
-                                   HttpServletRequest request) {
-        return ResponseEntity.ok(authService.authenticate(req.getLoginId(), req.getPassword(), response, request));
-    }
+## Security Model Details
 
-    @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody RegisterRequest req) {
-        return ResponseEntity.ok(authService.register(req.getUsername(), req.getEmail(), req.getPassword()));
-    }
+- Permit `/auth/**`
+- JWT mode uses `JwtAuthFilter`
+- Session mode persists in `HttpSession`
 
-    @PostMapping("/refresh")
-    public ResponseEntity<?> refresh(@CookieValue("AuthRefreshToken") String token,
-                                     HttpServletResponse response) {
-        return ResponseEntity.ok(authService.refreshAccessToken(token, response));
-    }
+---
 
-    @PostMapping("/logout")
-    public ResponseEntity<?> logout(HttpServletResponse response) {
-        return ResponseEntity.ok(authService.logout(response));
-    }
-}
+## DTOs
+
+- `LoginRequest`
+- `RefreshRequest`
+- `AuthResponse`
+- `MessageResponse`
+
+---
+
+## Testing With curl
+
+### JWT mode
+```bash
+curl -i -X POST "http://localhost:8080/auth/login" -H "Content-Type: application/json" -d '{ "username": "testuser", "password": "testpass" }' -c cookies.txt
 ```
 
----
+### Session mode
+```bash
+curl -i -X POST "http://localhost:8080/auth/login" -H "Content-Type: application/json" -d '{ "username": "testuser", "password": "testpass" }' -c cookies.txt
+```
 
-## ✨ Features
 
-| Feature             | Support  |
-|---------------------|----------|
-| JWT authentication  | ✅       |
-| Session authentication (JDBC) | ✅       |
-| Refresh token support | ✅       |
-| Cookie-based refresh | ✅       |
-| SPI-based integration | ✅       |
-| Modular Spring Boot setup | ✅       |
-| Auto-configuration   | ✅       |
+## Versioning and Compatibility
+
+- Java 17
+- Spring Boot 3.4.2
+- JJWT 0.11.5
 
 ---
 
-## 📚 License
+## Contributing
 
-This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
-
+Fork, clone, build with Maven.
 
 ---
 
-## 🌐 Global Dependency (Coming Soon)
+## License
 
-Support for Maven Central / GitHub Packages will be documented here once deployed.
+MIT

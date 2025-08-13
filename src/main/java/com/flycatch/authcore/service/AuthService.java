@@ -9,6 +9,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -17,18 +19,16 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
-public class AuthService {
+public class AuthService  {
 
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
-
-    private final AuthCoreUserService userService;
+    private final UserDetailsService userService;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthCoreConfig authCoreConfig;
     private final JwtClaimsProvider claimsProvider;
 
-    public AuthService(AuthCoreUserService userService, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,
-                       AuthCoreConfig authCoreConfig, JwtClaimsProvider claimsProvider) {
+    public AuthService(UserDetailsService userService, PasswordEncoder passwordEncoder, JwtUtil jwtUtil, AuthCoreConfig authCoreConfig, JwtClaimsProvider claimsProvider) {
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
@@ -48,16 +48,14 @@ public class AuthService {
             logger.info("Authenticating user: {}", loginId);
         }
 
-        Optional<Object> userOpt = loginId.contains("@")
-                ? userService.findByEmail(loginId)
-                : userService.findByUsername(loginId);
+        Optional<UserDetails> userOpt = Optional.ofNullable(userService.loadUserByUsername(loginId));
 
         Map<String, String> responseData = new HashMap<>();
 
         if (userOpt.isPresent()) {
-            Object user = userOpt.get();
-            String storedPassword = claimsProvider.extractPassword(user);
-            String username = claimsProvider.extractUsername(user);
+            UserDetails user = userOpt.get();
+            String storedPassword = user.getPassword();
+            String username =  user.getUsername();
 
             if (passwordEncoder.matches(password, storedPassword)) {
 
@@ -73,7 +71,7 @@ public class AuthService {
                     String accessToken = jwtUtil.generateAccessToken(username, claimsProvider.extractClaims(user));
                     responseData.put("accessToken", accessToken);
 
-                    if (authCoreConfig.getRefreshToken().isEnabled()) {
+                    if (authCoreConfig.getJwt().isRefreshTokenEnabled()) {
                         String refreshToken = jwtUtil.generateRefreshToken(username);
                         responseData.put("refreshToken", refreshToken);
 
@@ -95,28 +93,9 @@ public class AuthService {
         return responseData;
     }
 
-    public Map<String, String> register(String username, String email, String password) {
-        if (authCoreConfig.getLogging().isEnabled()) {
-            logger.info("Registering user: username={}, email={}", username, email);
-        }
-
-        Map<String, String> response = new HashMap<>();
-
-        boolean usernameExists = username != null && userService.findByUsername(username).isPresent();
-        boolean emailExists = email != null && userService.findByEmail(email).isPresent();
-
-        if (usernameExists || emailExists) {
-            response.put("message", "USER_ALREADY_EXISTS");
-            return response;
-        }
-
-        userService.save(username, email, passwordEncoder.encode(password));
-        response.put("message", "USER_REGISTERED_SUCCESSFULLY");
-        return response;
-    }
 
     public Map<String, String> refreshAccessToken(String refreshToken, HttpServletResponse response) {
-        if (!authCoreConfig.getRefreshToken().isEnabled()) {
+        if (!authCoreConfig.getJwt().isRefreshTokenEnabled()) {
             throw new UnsupportedOperationException("Refresh token is disabled.");
         }
 
@@ -131,16 +110,17 @@ public class AuthService {
             throw new IllegalArgumentException("Invalid refresh token");
         }
 
-        Optional<Object> userOpt = userService.findByUsername(username);
+        Optional<UserDetails> userOpt = Optional.ofNullable(userService.loadUserByUsername(username));
         if (userOpt.isEmpty()) {
             throw new IllegalArgumentException("User not found for refresh token");
         }
 
-        Object user = userOpt.get();
-        String newAccessToken = jwtUtil.generateAccessToken(username, claimsProvider.extractClaims(user));
+        UserDetails user = userOpt.get();
+        String newAccessToken = jwtUtil.generateAccessToken(username, claimsProvider.
+                extractClaims(user));
         responseData.put("accessToken", newAccessToken);
 
-        if (authCoreConfig.getRefreshToken().isEnabled()) {
+        if (authCoreConfig.getJwt().isRefreshTokenEnabled()) {
             String newRefreshToken = jwtUtil.generateRefreshToken(username);
             responseData.put("refreshToken", newRefreshToken);
 

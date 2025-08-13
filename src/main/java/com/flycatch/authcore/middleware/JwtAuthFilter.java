@@ -28,12 +28,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final AuthCoreConfig authCoreConfig;
-    private final JwtClaimsProvider claimsProvider;
 
-    public JwtAuthFilter(JwtUtil jwtUtil, AuthCoreConfig authCoreConfig, JwtClaimsProvider claimsProvider) {
+    public JwtAuthFilter(JwtUtil jwtUtil, AuthCoreConfig authCoreConfig) {
         this.jwtUtil = jwtUtil;
         this.authCoreConfig = authCoreConfig;
-        this.claimsProvider = claimsProvider;
+
     }
 
     @Override
@@ -61,10 +60,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     if (jwtUtil.validateToken(token, username)) {
-                        Collection<? extends GrantedAuthority> authorities = claimsProvider.extractAuthorities(claims);
+                       // Collection<? extends GrantedAuthority> authorities = claimsProvider.extractAuthorities(claims);
 
                         UsernamePasswordAuthenticationToken authentication =
-                                new UsernamePasswordAuthenticationToken(username, null, authorities);
+                                new UsernamePasswordAuthenticationToken(username, null, null);
 
                         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authentication);

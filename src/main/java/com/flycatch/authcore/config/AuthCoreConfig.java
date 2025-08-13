@@ -12,7 +12,6 @@ import org.springframework.context.annotation.Configuration;
 public class AuthCoreConfig {
     private Jwt jwt;
     private Session session;
-    private RefreshToken refreshToken;
     private Logging logging;
     private Cookies cookies;
 
@@ -23,6 +22,7 @@ public class AuthCoreConfig {
         private String secret;
         private long accessTokenExpiration;
         private long refreshTokenExpiration;
+        private boolean refreshTokenEnabled;
 
     }
 
@@ -34,12 +34,6 @@ public class AuthCoreConfig {
 
     }
 
-    @Setter
-    @Getter
-    public static class RefreshToken {
-        private boolean enabled;
-
-    }
 
     @Setter
     @Getter

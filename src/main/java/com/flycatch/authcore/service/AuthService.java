@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
-public class AuthService {
+public class AuthService  {
 
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
     private final UserDetailsService userService;
@@ -71,7 +71,7 @@ public class AuthService {
                     String accessToken = jwtUtil.generateAccessToken(username, claimsProvider.extractClaims(user));
                     responseData.put("accessToken", accessToken);
 
-                    if (authCoreConfig.getRefreshToken().isEnabled()) {
+                    if (authCoreConfig.getJwt().isRefreshTokenEnabled()) {
                         String refreshToken = jwtUtil.generateRefreshToken(username);
                         responseData.put("refreshToken", refreshToken);
 
@@ -95,7 +95,7 @@ public class AuthService {
 
 
     public Map<String, String> refreshAccessToken(String refreshToken, HttpServletResponse response) {
-        if (!authCoreConfig.getRefreshToken().isEnabled()) {
+        if (!authCoreConfig.getJwt().isRefreshTokenEnabled()) {
             throw new UnsupportedOperationException("Refresh token is disabled.");
         }
 
@@ -120,7 +120,7 @@ public class AuthService {
                 extractClaims(user));
         responseData.put("accessToken", newAccessToken);
 
-        if (authCoreConfig.getRefreshToken().isEnabled()) {
+        if (authCoreConfig.getJwt().isRefreshTokenEnabled()) {
             String newRefreshToken = jwtUtil.generateRefreshToken(username);
             responseData.put("refreshToken", newRefreshToken);
 

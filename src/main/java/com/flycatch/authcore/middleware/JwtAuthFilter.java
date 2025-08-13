@@ -28,12 +28,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final AuthCoreConfig authCoreConfig;
-    private final JwtClaimsProvider claimsProvider;
 
-    public JwtAuthFilter(JwtUtil jwtUtil, AuthCoreConfig authCoreConfig, JwtClaimsProvider claimsProvider) {
+    public JwtAuthFilter(JwtUtil jwtUtil, AuthCoreConfig authCoreConfig) {
         this.jwtUtil = jwtUtil;
         this.authCoreConfig = authCoreConfig;
-        this.claimsProvider = claimsProvider;
+
     }
 
     @Override

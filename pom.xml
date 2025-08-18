@@ -11,11 +11,12 @@
 
 	<licenses>
 		<license>
-			<name>MIT License</name>
-			<url>https://opensource.org/licenses/MIT</url>
+			<name>GNU General Public License v3.0</name>
+			<url>https://www.gnu.org/licenses/gpl-3.0.en.html</url>
 			<distribution>repo</distribution>
 		</license>
 	</licenses>
+
 
 	<developers>
 		<developer>

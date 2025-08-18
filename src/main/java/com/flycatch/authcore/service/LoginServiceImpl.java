@@ -18,15 +18,10 @@ public class LoginServiceImpl  {
     private final JwtClaimsProvider claimsProvider;
 
     public String login(String username, String password,HttpServletResponse response) {
-        // Step 1: Authenticate credentials
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(username, password)
         );
-
-        // Step 2: Get authenticated user details
         UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-
-        // Step 3: Generate JWT access token
         return jwtUtil.generateAccessToken(
                 userDetails.getUsername(),
                 claimsProvider != null ? claimsProvider.extractClaims(userDetails) : null

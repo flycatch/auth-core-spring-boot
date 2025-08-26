@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>io.github.flycatch</groupId>
 	<artifactId>authcore</artifactId>
-	<version>1.1.8</version>
+	<version>1.0.0</version>
 	<name>authcore</name>
 	<description>Authcore project for Spring Boot</description>
 	<url>https://github.com/flycatch/auth-core-spring-boot</url>
@@ -142,22 +142,22 @@
 			<scope>runtime</scope>
 		</dependency>
 	</dependencies>
-	<distributionManagement>
-		<repository>
-			<id>ossrh</id>
-			<name>OSSRH Release Repository</name>
-			<url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-		</repository>
-		<snapshotRepository>
-			<id>ossrh</id>
-			<name>OSSRH Snapshot Repository</name>
-			<url>https://s01.oss.sonatype.org/content/repositories/snapshots/</url>
-		</snapshotRepository>
-	</distributionManagement>
+
 
 	<build>
 		<plugins>
-			<!-- Disable Spring Boot repackage (since this is a library, not an app) -->
+			<plugin>
+				<groupId>org.sonatype.central</groupId>
+				<artifactId>central-publishing-maven-plugin</artifactId>
+				<version>0.8.0</version>
+				<extensions>true</extensions>
+				<configuration>
+					<publishingServerId>central</publishingServerId>
+					<autoPublish>true</autoPublish>
+					<waitUntil>published</waitUntil>
+				</configuration>
+			</plugin>
+
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>

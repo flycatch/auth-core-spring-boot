@@ -1,100 +1,78 @@
 package com.flycatch.authcore.config;
 
+import jakarta.annotation.PostConstruct;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
 
-@Configuration
+/**
+ * Pure properties holder. Client app controls everything via application.yml.
+ */
+@Setter
+@Getter
 @ConfigurationProperties(prefix = "auth")
 public class AuthCoreConfig {
-    private Jwt jwt;
-    private Session session;
-    private RefreshToken refreshToken;
-    private Logging logging;
-    private Cookies cookies;
 
-    public Jwt getJwt() { return jwt; }
-    public void setJwt(Jwt jwt) { this.jwt = jwt; }
+    private Jwt jwt = new Jwt();
+    private Session session = new Session();
+    private Logging logging = new Logging();
+    private Cookies cookies = new Cookies();
 
-    public Session getSession() { return session; }
-    public void setSession(Session session) { this.session = session; }
+    /** Legacy support: auth.refresh-token.enabled */
+    private RefreshToken refreshToken = new RefreshToken();
 
-    public RefreshToken getRefreshToken() { return refreshToken; }
-    public void setRefreshToken(RefreshToken refreshToken) { this.refreshToken = refreshToken; }
+    /** Endpoint toggles for white-label controllers */
+    private Endpoints endpoints = new Endpoints();
 
-    public Logging getLogging() { return logging; }
-    public void setLogging(Logging logging) { this.logging = logging; }
-
-    public Cookies getCookies() { return cookies; }
-    public void setCookies(Cookies cookies) { this.cookies = cookies; }
-
+    @Setter @Getter
     public static class Jwt {
-        private boolean enabled;
+        private boolean enabled = true;
         private String secret;
-        private long accessTokenExpiration;
-        private long refreshTokenExpiration;
-
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean enabled) { this.enabled = enabled; }
-
-        public String getSecret() { return secret; }
-        public void setSecret(String secret) { this.secret = secret; }
-
-        public long getAccessTokenExpiration() { return accessTokenExpiration; }
-        public void setAccessTokenExpiration(long accessTokenExpiration) { this.accessTokenExpiration = accessTokenExpiration; }
-
-        public long getRefreshTokenExpiration() { return refreshTokenExpiration; }
-        public void setRefreshTokenExpiration(long refreshTokenExpiration) { this.refreshTokenExpiration = refreshTokenExpiration; }
+        /** Expirations in milliseconds to match YAML usage */
+        private long accessTokenExpiration = 900_000;          // 15m
+        private long refreshTokenExpiration = 2_592_000_000L;  // 30d
+        private boolean refreshTokenEnabled = false;
     }
 
+    @Setter @Getter
     public static class Session {
-        private boolean enabled;
-        private String storeType;
-
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean enabled) { this.enabled = enabled; }
-
-        public String getStoreType() { return storeType; }
-        public void setStoreType(String storeType) { this.storeType = storeType; }
+        private boolean enabled = false;
+        private String storeType = "jdbc"; // jdbc | redis | none
     }
 
-    public static class RefreshToken {
-        private boolean enabled;
-
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean enabled) { this.enabled = enabled; }
-    }
-
+    @Setter @Getter
     public static class Logging {
-        private boolean enabled;
-
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        private boolean enabled = false;
     }
 
+    @Setter @Getter
     public static class Cookies {
-        private boolean enabled;
-        private String name;
-        private boolean httpOnly;
-        private boolean secure;
-        private String sameSite;
-        private int maxAge;
+        private boolean enabled = false;
+        private String name = "AuthRefreshToken";
+        private boolean httpOnly = true;
+        private boolean secure = false;
+        private String sameSite = "Strict"; // Strict | Lax | None
+        private int maxAge = 604800; // seconds (7 days)
+    }
 
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    @Setter @Getter
+    public static class RefreshToken {
+        /** Legacy flag location (back-compat) */
+        private boolean enabled = false;
+    }
 
-        public String getName() { return name; }
-        public void setName(String name) { this.name = name; }
+    @Setter @Getter
+    public static class Endpoints {
+        private boolean loginEnabled = false;
+        private boolean refreshEnabled = false;
+        private boolean logoutEnabled = false;
+    }
 
-        public boolean isHttpOnly() { return httpOnly; }
-        public void setHttpOnly(boolean httpOnly) { this.httpOnly = httpOnly; }
-
-        public boolean isSecure() { return secure; }
-        public void setSecure(boolean secure) { this.secure = secure; }
-
-        public String getSameSite() { return sameSite; }
-        public void setSameSite(String sameSite) { this.sameSite = sameSite; }
-
-        public int getMaxAge() { return maxAge; }
-        public void setMaxAge(int maxAge) { this.maxAge = maxAge; }
+    /** Sync legacy refresh toggle with modern flag */
+    @PostConstruct
+    public void syncLegacyRefresh() {
+        if (this.refreshToken != null && this.refreshToken.isEnabled() && !this.jwt.isRefreshTokenEnabled()) {
+            this.jwt.setRefreshTokenEnabled(true);
+        }
     }
 }

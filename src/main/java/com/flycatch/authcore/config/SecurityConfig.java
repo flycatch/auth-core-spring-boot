@@ -34,30 +34,25 @@ public class SecurityConfig {
                 );
 
         if (authCoreConfig.getSession().isEnabled()) {
-            http.sessionManagement(session -> session
-                    .maximumSessions(1)
-            );
+            http.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED));
         } else {
-            http.sessionManagement(session -> session
-                    .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            );
+            http.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
         }
 
         if (authCoreConfig.getJwt().isEnabled()) {
             http.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         }
 
-
         return http.build();
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
     }
 
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
         return authConfig.getAuthenticationManager();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 }

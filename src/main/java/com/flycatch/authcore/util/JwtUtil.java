@@ -10,9 +10,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 public class JwtUtil {
@@ -21,6 +25,7 @@ public class JwtUtil {
 
     private final AuthCoreConfig cfg;
     private Key signingKey;
+    private static final String CLAIM_ROLES = "roles";
 
     public JwtUtil(AuthCoreConfig cfg) {
         this.cfg = cfg;
@@ -84,10 +89,31 @@ public class JwtUtil {
         return getAllClaims(token).getSubject();
     }
 
+    public Set<String> extractRoles(String token) {
+        Claims claims = getAllClaims(token);
+        Object roles = claims.get(CLAIM_ROLES);
+
+        if (roles instanceof Collection<?>) {
+            return ((Collection<?>) roles)
+                    .stream()
+                    .map(Object::toString)
+                    .collect(Collectors.toSet());
+        }
+        return Collections.emptySet();
+    }
     public Map<String, Object> extractAllClaims(String token) {
         Claims claims = getAllClaims(token);
         return new HashMap<>(claims);
     }
+    public boolean hasRole(String token, String role) {
+        return extractRoles(token).contains(role);
+    }
+
+    public boolean hasAnyRole(String token, Collection<String> roles) {
+        Set<String> userRoles = extractRoles(token);
+        return roles.stream().anyMatch(userRoles::contains);
+    }
+
 
     public boolean validateToken(String token, String expectedUsername) {
         try {

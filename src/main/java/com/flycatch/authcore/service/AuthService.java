@@ -9,18 +9,21 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseCookie;
+import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -29,21 +32,22 @@ public class AuthService  {
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
     private final UserDetailsService userService;
-    private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthCoreConfig cfg;
     private final JwtClaimsProvider claimsProvider;
+    private final AuthenticationManager authenticationManager;
 
     public AuthService(UserDetailsService userService,
                        PasswordEncoder passwordEncoder,
                        JwtUtil jwtUtil,
                        AuthCoreConfig cfg,
-                       JwtClaimsProvider claimsProvider) {
+                       JwtClaimsProvider claimsProvider,
+                       AuthenticationManager authenticationManager) {
         this.userService = userService;
-        this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.cfg = cfg;
         this.claimsProvider = claimsProvider;
+        this.authenticationManager = authenticationManager;
     }
 
     @PostConstruct
@@ -65,23 +69,18 @@ public class AuthService  {
             logger.info("Authenticating user: {}", loginId);
         }
 
-        final UserDetails user;
-        try {
-            user = userService.loadUserByUsername(loginId);
-        } catch (UsernameNotFoundException ex) {
-            return invalid();
-        }
+        try{
+        Authentication authentication = authenticationManager.authenticate
+                (new UsernamePasswordAuthenticationToken(loginId,password));
+            UserDetails user = (UserDetails) authentication.getPrincipal();
+            List<String> roles = user.getAuthorities().stream()
+                    .map(GrantedAuthority::getAuthority)
+                    .toList();
 
-        if (!passwordEncoder.matches(password, user.getPassword())) {
-            return invalid();
-        }
 
         // ===== SESSION MODE =====
         if (cfg.getSession().isEnabled()) {
             // Build an Authentication with the user's authorities
-            UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
-
             // Put it into the SecurityContext and persist it to the HTTP session
             SecurityContext context = SecurityContextHolder.createEmptyContext();
             context.setAuthentication(authentication);
@@ -92,6 +91,7 @@ public class AuthService  {
 
             Map<String, String> out = new HashMap<>();
             out.put("message", "SESSION_AUTHENTICATED");
+            out.put("roles", String.join(",", roles));
             return out;
         }
 
@@ -105,6 +105,7 @@ public class AuthService  {
             Map<String, String> out = new HashMap<>();
             out.put("accessToken", accessToken);
             out.put("message", "JWT_AUTHENTICATED");
+            out.put("roles", String.join(",", roles));
 
             if (isRefreshEnabled()) {
                 String refreshToken = jwtUtil.generateRefreshToken(user.getUsername());
@@ -119,6 +120,10 @@ public class AuthService  {
         }
 
         throw new IllegalStateException("No authentication mechanism enabled.");
+        } catch (Exception ex) {
+            logger.error("Authentication failed for user {}", loginId, ex);
+            return invalid();
+        }
     }
 
     public Map<String, String> refreshAccessToken(String refreshToken, HttpServletResponse response) {

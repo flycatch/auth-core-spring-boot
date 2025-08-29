@@ -17,6 +17,7 @@ public class AuthCoreConfig {
     private Session session = new Session();
     private Logging logging = new Logging();
     private Cookies cookies = new Cookies();
+    private Rbac rbac = new Rbac();
 
     /** Legacy support: auth.refresh-token.enabled */
     private RefreshToken refreshToken = new RefreshToken();
@@ -66,6 +67,13 @@ public class AuthCoreConfig {
         private boolean loginEnabled = false;
         private boolean refreshEnabled = false;
         private boolean logoutEnabled = false;
+    }
+    @Setter @Getter
+    public static class Rbac {
+        private boolean enabled = false;
+        private String claim = "roles";
+        private String defaultRole = "USER";
+        private boolean strict = false;
     }
 
     /** Sync legacy refresh toggle with modern flag */

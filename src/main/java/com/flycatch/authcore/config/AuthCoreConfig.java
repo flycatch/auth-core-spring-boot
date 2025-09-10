@@ -75,7 +75,8 @@ public class AuthCoreConfig {
     @Setter@Getter
     public static class Oauth2 {
         private boolean enabled = false;
-        private Map<String,Provider> providers = new HashMap<>();
+        private Map<String,Provider> providers = new HashMap<>();}
+
         @Setter @Getter
         public static class Provider {
             private String clientId;
@@ -85,9 +86,11 @@ public class AuthCoreConfig {
             private String authUri;
             private String tokenUri;
             private String userInfoUri;
+            private String authorizationUri;
+            private String userNameAttribute;
         }
         // Future expansion
-    }
+
     /** Sync legacy refresh toggle with modern flag */
     @PostConstruct
     public void syncLegacyRefresh() {

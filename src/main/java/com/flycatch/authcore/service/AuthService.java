@@ -10,22 +10,25 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.ResponseCookie;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.*;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
-import org.springframework.stereotype.Service;
+import org.springframework.http.ResponseCookie;
 
 import java.time.Duration;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
-@Service
-public class AuthService  {
+public class AuthService {
 
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
@@ -61,6 +64,7 @@ public class AuthService  {
         return cfg.getJwt().isRefreshTokenEnabled();
     }
 
+    // ========== Username/Password login ==========
     public Map<String, String> authenticate(String loginId,
                                             String password,
                                             HttpServletResponse response,
@@ -80,7 +84,23 @@ public class AuthService  {
             return invalid();
         }
 
-        // ===== SESSION MODE (PRESERVED) =====
+        return issueAuthentication(user, request, response, "PASSWORD_AUTHENTICATED");
+    }
+
+    // ========== OAuth2 login ==========
+    public Map<String, String> authenticateOAuth2(String username,
+                                                  HttpServletRequest request,
+                                                  HttpServletResponse response) {
+        final UserDetails user = userService.loadUserByUsername(username);
+        return issueAuthentication(user, request, response, "OAUTH2_AUTHENTICATED");
+    }
+
+    // ========== Shared method for issuing Session/JWT ==========
+    private Map<String, String> issueAuthentication(UserDetails user,
+                                                    HttpServletRequest request,
+                                                    HttpServletResponse response,
+                                                    String successMessage) {
+        // ===== SESSION MODE =====
         if (cfg.getSession().isEnabled()) {
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
@@ -93,50 +113,58 @@ public class AuthService  {
             new HttpSessionSecurityContextRepository().saveContext(context, request, response);
 
             Map<String, String> out = new HashMap<>();
-            out.put("message", "SESSION_AUTHENTICATED");
+            out.put("message", successMessage + "_SESSION");
             return out;
         }
 
-        // ===== JWT MODE (PRESERVED + ENHANCED WITH RBAC CLAIMS) =====
+        // ===== JWT MODE =====
         if (cfg.getJwt().isEnabled()) {
-            // take authorities from UserDetails and expand ROLE_* -> YAML permissions
-            Set<String> baseAuthorities = user.getAuthorities().stream()
-                    .map(GrantedAuthority::getAuthority)
-                    .collect(Collectors.toSet());
-            Set<String> expandedAuthorities = rbac.expandAuthorities(baseAuthorities);
-
-            Map<String, Object> claims = new HashMap<>();
-            if (claimsProvider != null) {
-                Map<String, Object> extra = claimsProvider.extractClaims(user);
-                if (extra != null) claims.putAll(extra);
-            }
-            // embed final authorities + roles into token (for downstream method security)
-            List<String> authorities = expandedAuthorities.stream().sorted().toList();
-            claims.put(AuthConstants.CLAIM_AUTHORITIES, authorities);
-            List<String> roles = authorities.stream().filter(a -> a.startsWith("ROLE_")).toList();
-            claims.put(AuthConstants.CLAIM_ROLES, roles);
-
-            String accessToken = jwtUtil.generateAccessToken(user.getUsername(), claims);
-
-            Map<String, String> out = new HashMap<>();
-            out.put("accessToken", accessToken);
-            out.put("message", "JWT_AUTHENTICATED");
-
-            if (isRefreshEnabled()) {
-                String refreshToken = jwtUtil.generateRefreshToken(user.getUsername());
-                out.put("refreshToken", refreshToken);
-
-                if (cfg.getCookies().isEnabled()) {
-                    setCookie(response, cfg.getCookies().getName(), refreshToken, cfg.getCookies().getMaxAge());
-                }
-            }
-
-            return out;
+            return issueJwt(user, response, successMessage);
         }
 
         throw new IllegalStateException("No authentication mechanism enabled.");
     }
 
+    private Map<String, String> issueJwt(UserDetails user,
+                                         HttpServletResponse response,
+                                         String successMessage) {
+        // take authorities from UserDetails and expand ROLE_* -> YAML permissions
+        Set<String> baseAuthorities = user.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
+        Set<String> expandedAuthorities = rbac.expandAuthorities(baseAuthorities);
+
+        Map<String, Object> claims = new HashMap<>();
+        if (claimsProvider != null) {
+            Map<String, Object> extra = claimsProvider.extractClaims(user);
+            if (extra != null) claims.putAll(extra);
+        }
+
+        // embed final authorities + roles into token (for downstream method security)
+        List<String> authorities = expandedAuthorities.stream().sorted().toList();
+        claims.put(AuthConstants.CLAIM_AUTHORITIES, authorities);
+        List<String> roles = authorities.stream().filter(a -> a.startsWith("ROLE_")).toList();
+        claims.put(AuthConstants.CLAIM_ROLES, roles);
+
+        String accessToken = jwtUtil.generateAccessToken(user.getUsername(), claims);
+
+        Map<String, String> out = new HashMap<>();
+        out.put("accessToken", accessToken);
+        out.put("message", successMessage + "_JWT");
+
+        if (isRefreshEnabled()) {
+            String refreshToken = jwtUtil.generateRefreshToken(user.getUsername());
+            out.put("refreshToken", refreshToken);
+
+            if (cfg.getCookies().isEnabled()) {
+                setCookie(response, cfg.getCookies().getName(), refreshToken, cfg.getCookies().getMaxAge());
+            }
+        }
+
+        return out;
+    }
+
+    // ========== Refresh ==========
     public Map<String, String> refreshAccessToken(String refreshToken, HttpServletResponse response) {
         if (!isRefreshEnabled()) {
             throw new UnsupportedOperationException("Refresh token is disabled.");
@@ -151,45 +179,10 @@ public class AuthService  {
         }
 
         final UserDetails user = userService.loadUserByUsername(username);
-
-        // rebuild claims using up-to-date authorities (RBAC)
-        Set<String> baseAuthorities = user.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.toSet());
-        Set<String> expandedAuthorities = rbac.expandAuthorities(baseAuthorities);
-
-        Map<String, Object> claims = new HashMap<>();
-        if (claimsProvider != null) {
-            Map<String, Object> extra = claimsProvider.extractClaims(user);
-            if (extra != null) claims.putAll(extra);
-        }
-        List<String> authorities = expandedAuthorities.stream().sorted().toList();
-        claims.put(AuthConstants.CLAIM_AUTHORITIES, authorities);
-        List<String> roles = authorities.stream().filter(a -> a.startsWith("ROLE_")).toList();
-        claims.put(AuthConstants.CLAIM_ROLES, roles);
-
-        String newAccessToken = jwtUtil.generateAccessToken(username, claims);
-
-        Map<String, String> out = new HashMap<>();
-        out.put("accessToken", newAccessToken);
-
-        if (isRefreshEnabled()) {
-            String newRefreshToken = jwtUtil.generateRefreshToken(username);
-            out.put("refreshToken", newRefreshToken);
-
-            if (cfg.getCookies().isEnabled()) {
-                setCookie(response, cfg.getCookies().getName(), newRefreshToken, cfg.getCookies().getMaxAge());
-            }
-        }
-
-        return out;
+        return issueJwt(user, response, "JWT_REFRESHED");
     }
 
-    /**
-     * Logout for both modes:
-     * - SESSION mode: invalidates HttpSession, clears SecurityContext, expires JSESSIONID.
-     * - JWT mode: clears refresh cookie if enabled. (Access tokens remain statelessly valid until expiry.)
-     */
+    // ========== Logout ==========
     public Map<String, String> logout(HttpServletRequest request, HttpServletResponse response) {
         var session = request.getSession(false);
         if (session != null) {
@@ -236,18 +229,6 @@ public class AuthService  {
                 .sameSite(cfg.getCookies().getSameSite())
                 .path("/")
                 .maxAge(Duration.ofSeconds(maxAgeSeconds))
-                .build();
-        response.addHeader("Set-Cookie", cookie.toString());
-    }
-
-    @SuppressWarnings("unused")
-    private void clearCookie(HttpServletResponse response, String name) {
-        ResponseCookie cookie = ResponseCookie.from(name, "")
-                .httpOnly(cfg.getCookies().isHttpOnly())
-                .secure(cfg.getCookies().isSecure())
-                .sameSite(cfg.getCookies().getSameSite())
-                .path("/")
-                .maxAge(Duration.ZERO)
                 .build();
         response.addHeader("Set-Cookie", cookie.toString());
     }

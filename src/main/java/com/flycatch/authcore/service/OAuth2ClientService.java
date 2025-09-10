@@ -26,7 +26,7 @@ public class OAuth2ClientService {
         ));
 
 }
-    private AuthCoreConfig.Oauth2.Provider cfg(String provider) {
+    private AuthCoreConfig.Provider cfg(String provider) {
         var p = config.getOauth2().getProviders().get(provider);
         if (p == null) throw new IllegalArgumentException("Unknown OAuth2 provider: " + provider);
         return p;

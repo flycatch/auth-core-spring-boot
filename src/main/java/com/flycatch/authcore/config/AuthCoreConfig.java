@@ -5,6 +5,10 @@ import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
  * Pure properties holder. Client app controls everything via application.yml.
  */
@@ -17,6 +21,7 @@ public class AuthCoreConfig {
     private Session session = new Session();
     private Logging logging = new Logging();
     private Cookies cookies = new Cookies();
+    private Oauth2 oauth2 = new Oauth2();
 
     /** Legacy support: auth.refresh-token.enabled */
     private RefreshToken refreshToken = new RefreshToken();
@@ -67,6 +72,24 @@ public class AuthCoreConfig {
         private boolean refreshEnabled = false;
         private boolean logoutEnabled = false;
     }
+    @Setter@Getter
+    public static class Oauth2 {
+        private boolean enabled = false;
+        private Map<String,Provider> providers = new HashMap<>();}
+
+        @Setter @Getter
+        public static class Provider {
+            private String clientId;
+            private String clientSecret;
+            private String redirectUri;
+            private List<String> scopes = List.of("openid", "profile", "email");
+            private String authUri;
+            private String tokenUri;
+            private String userInfoUri;
+            private String authorizationUri;
+            private String userNameAttribute;
+        }
+        // Future expansion
 
     /** Sync legacy refresh toggle with modern flag */
     @PostConstruct

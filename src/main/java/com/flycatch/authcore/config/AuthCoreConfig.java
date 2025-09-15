@@ -24,6 +24,9 @@ public class AuthCoreConfig {
     /** Endpoint toggles for white-label controllers */
     private Endpoints endpoints = new Endpoints();
 
+    /** OAuth2 login controls (enable + redirects + JWT emission) */
+    private OAuth2 oauth2 = new OAuth2();
+
     @Setter @Getter
     public static class Jwt {
         private boolean enabled = true;
@@ -66,6 +69,31 @@ public class AuthCoreConfig {
         private boolean loginEnabled = false;
         private boolean refreshEnabled = false;
         private boolean logoutEnabled = false;
+    }
+
+    @Setter @Getter
+    public static class OAuth2 {
+        /** Turn on oauth2Login() flow */
+        private boolean enabled = false;
+
+        /** Where to redirect browser after successful OAuth2 login */
+        private String successRedirect = "/";
+
+        /** Where to redirect on failure */
+        private String failureRedirect = "/login?error=oauth2";
+
+        /** Append tokens as query params on the success redirect */
+        private String accessTokenParam = "accessToken";
+        private String refreshTokenParam = "refreshToken";
+
+        /** Emit JWT access token after OAuth2 login */
+        private boolean issueJwt = true;
+
+        /** Include expanded authorities in JWT claim (same as username/password) */
+        private boolean includeAuthorities = true;
+
+        /** If true and cookies.enabled=true, refresh token is also set as cookie */
+        private boolean setRefreshCookie = true;
     }
 
     /** Sync legacy refresh toggle with modern flag */

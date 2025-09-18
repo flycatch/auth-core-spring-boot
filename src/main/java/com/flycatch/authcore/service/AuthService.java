@@ -4,6 +4,7 @@ import com.flycatch.authcore.config.AuthCoreConfig;
 import com.flycatch.authcore.rbac.RbacAuthorityService;
 import com.flycatch.authcore.security.AuthConstants;
 import com.flycatch.authcore.spi.JwtClaimsProvider;
+import com.flycatch.authcore.twofactor.OtpService;
 import com.flycatch.authcore.util.JwtUtil;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,7 +22,10 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,13 +39,16 @@ public class AuthService  {
     private final AuthCoreConfig cfg;
     private final JwtClaimsProvider claimsProvider;
     private final RbacAuthorityService rbac;
+    private final OtpService otpService; // optional, not used in this snippet
 
     public AuthService(UserDetailsService userService,
                        PasswordEncoder passwordEncoder,
                        JwtUtil jwtUtil,
                        AuthCoreConfig cfg,
                        JwtClaimsProvider claimsProvider,
-                       RbacAuthorityService rbac) {
+                       RbacAuthorityService rbac,
+                       OtpService otpService) {
+        this.otpService = otpService;
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
@@ -96,6 +103,17 @@ public class AuthService  {
             out.put("message", "SESSION_AUTHENTICATED");
             return out;
         }
+// ====== 2FA CHECK ======
+        if (cfg.getTwoFactor().isEnabled()) {
+            if (cfg.getLogging().isEnabled()) {
+                logger.info("2FA enabled. Sending OTP for user: {}", loginId);
+            }
+            otpService.generateAndSendOtp(user.getUsername());
+            Map<String, String> out = new HashMap<>();
+            out.put("message", "OTP_SENT");
+            return out;
+        }
+
 
         // ===== JWT MODE (PRESERVED + ENHANCED WITH RBAC CLAIMS) =====
         if (cfg.getJwt().isEnabled()) {

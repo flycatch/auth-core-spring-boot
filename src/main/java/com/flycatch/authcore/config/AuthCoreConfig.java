@@ -17,6 +17,7 @@ public class AuthCoreConfig {
     private Session session = new Session();
     private Logging logging = new Logging();
     private Cookies cookies = new Cookies();
+    private TwoFactor twoFactor = new TwoFactor();
 
     /** Legacy support: auth.refresh-token.enabled */
     private RefreshToken refreshToken = new RefreshToken();
@@ -95,6 +96,35 @@ public class AuthCoreConfig {
         /** If true and cookies.enabled=true, refresh token is also set as cookie */
         private boolean setRefreshCookie = true;
     }
+
+    @Setter @Getter
+    public static class TwoFactor {
+        private boolean enabled = false; // Global switch
+        private Mode mode = Mode.NONE;   // EMAIL or SMS
+
+        private EmailProperties email = new EmailProperties();
+        private SmsProperties sms = new SmsProperties();
+
+        public enum Mode { NONE, EMAIL, SMS }
+
+
+        @Getter @Setter
+        public static class EmailProperties {
+            private String from;     // e.g. "no-reply@company.com"
+            private String subject;  // e.g. "Your OTP Code"
+            private long expirySeconds = 300; // default 5 min
+
+        }
+        @Getter @Setter
+        public static class SmsProperties {
+            private String provider; // e.g. "twilio"
+            private String apiKey;
+            private String senderId;
+            private long expirySeconds = 300;
+
+        }
+    }
+
 
     /** Sync legacy refresh toggle with modern flag */
     @PostConstruct

@@ -5,9 +5,6 @@ import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/**
- * Pure properties holder. Client app controls everything via application.yml.
- */
 @Setter
 @Getter
 @ConfigurationProperties(prefix = "auth")
@@ -18,10 +15,7 @@ public class AuthCoreConfig {
     private Logging logging = new Logging();
     private Cookies cookies = new Cookies();
 
-    /** Legacy support: auth.refresh-token.enabled */
     private RefreshToken refreshToken = new RefreshToken();
-
-    /** Endpoint toggles for white-label controllers */
     private Endpoints endpoints = new Endpoints();
 
     /** OAuth2 login controls (enable + redirects + JWT emission) */
@@ -31,7 +25,7 @@ public class AuthCoreConfig {
     public static class Jwt {
         private boolean enabled = true;
         private String secret;
-        /** Expirations in milliseconds to match YAML usage */
+        /** Expirations in milliseconds */
         private long accessTokenExpiration = 900_000;          // 15m
         private long refreshTokenExpiration = 2_592_000_000L;  // 30d
         private boolean refreshTokenEnabled = false;
@@ -44,9 +38,7 @@ public class AuthCoreConfig {
     }
 
     @Setter @Getter
-    public static class Logging {
-        private boolean enabled = false;
-    }
+    public static class Logging { private boolean enabled = false; }
 
     @Setter @Getter
     public static class Cookies {
@@ -60,7 +52,6 @@ public class AuthCoreConfig {
 
     @Setter @Getter
     public static class RefreshToken {
-        /** Legacy flag location (back-compat) */
         private boolean enabled = false;
     }
 
@@ -73,30 +64,23 @@ public class AuthCoreConfig {
 
     @Setter @Getter
     public static class OAuth2 {
-        /** Turn on oauth2Login() flow */
         private boolean enabled = false;
-
-        /** Where to redirect browser after successful OAuth2 login */
         private String successRedirect = "/";
-
-        /** Where to redirect on failure */
         private String failureRedirect = "/login?error=oauth2";
-
-        /** Append tokens as query params on the success redirect */
         private String accessTokenParam = "accessToken";
         private String refreshTokenParam = "refreshToken";
-
-        /** Emit JWT access token after OAuth2 login */
         private boolean issueJwt = true;
-
-        /** Include expanded authorities in JWT claim (same as username/password) */
         private boolean includeAuthorities = true;
-
-        /** If true and cookies.enabled=true, refresh token is also set as cookie */
         private boolean setRefreshCookie = true;
+        private boolean appendTokensInRedirect = false;
+
+        /** NEW: enable calling a host-provided UserProvisioner on OAuth2 success */
+        private boolean autoProvisionEnabled = true;
+
+        /** NEW: fallback role if no authorities are returned from provider/provisioner */
+        private String defaultRole = "ROLE_USER";
     }
 
-    /** Sync legacy refresh toggle with modern flag */
     @PostConstruct
     public void syncLegacyRefresh() {
         if (this.refreshToken != null && this.refreshToken.isEnabled() && !this.jwt.isRefreshTokenEnabled()) {

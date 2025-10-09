@@ -4,6 +4,7 @@ import com.flycatch.authcore.config.AuthCoreConfig;
 import com.flycatch.authcore.rbac.RbacAuthorityService;
 import com.flycatch.authcore.security.AuthConstants;
 import com.flycatch.authcore.spi.JwtClaimsProvider;
+import com.flycatch.authcore.spi.UserProvisioner;
 import com.flycatch.authcore.util.JwtUtil;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,25 +36,25 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     private final AuthCoreConfig cfg;
     private final JwtClaimsProvider claimsProvider;
     private final RbacAuthorityService rbac;
+    private final UserProvisioner userProvisioner;
 
-    public OAuth2LoginSuccessHandler(
-            JwtUtil jwtUtil,
-            AuthCoreConfig cfg,
-            JwtClaimsProvider claimsProvider,
-            RbacAuthorityService rbac
-    ) {
+    public OAuth2LoginSuccessHandler(JwtUtil jwtUtil,
+                                     AuthCoreConfig cfg,
+                                     JwtClaimsProvider claimsProvider,
+                                     RbacAuthorityService rbac,
+                                     UserProvisioner userProvisioner) {
         this.jwtUtil = jwtUtil;
         this.cfg = cfg;
         this.claimsProvider = claimsProvider;
         this.rbac = rbac;
+        this.userProvisioner = userProvisioner;
     }
 
     @Override
-    public void onAuthenticationSuccess(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            org.springframework.security.core.Authentication authentication
-    ) throws IOException, ServletException {
+    public void onAuthenticationSuccess(HttpServletRequest request,
+                                        HttpServletResponse response,
+                                        org.springframework.security.core.Authentication authentication)
+            throws IOException, ServletException {
 
         if (!(authentication instanceof OAuth2AuthenticationToken oauthToken)) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid OAuth2 authentication");
@@ -63,7 +64,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         OAuth2User oauth2User = oauthToken.getPrincipal();
         String registrationId = oauthToken.getAuthorizedClientRegistrationId(); // e.g., google, github
 
-        // Derive a stable username (email if available, else provider:id)
+        // Normalize identity
         String email = firstNonBlank(
                 get(oauth2User, "email"),
                 get(oauth2User, "email_address"),
@@ -75,18 +76,43 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                 get(oauth2User, "user_id")
         );
         String login = get(oauth2User, "login"); // GitHub
-
         String username = firstNonBlank(email, login, (registrationId + ":" + (sub != null ? sub : UUID.randomUUID())));
 
-        // Base authorities from the OAuth2 authentication
+        // === 1) Auto-provision: host app decides how to persist/link user (idempotent) ===
+        Set<String> provisionerAuthorities = Collections.emptySet();
+        if (cfg.getOauth2().isAutoProvisionEnabled()) {
+            UserProvisioner.OAuth2UserProfile profile =
+                    new UserProvisioner.OAuth2UserProfile(registrationId, sub, username, email, login, oauth2User.getAttributes());
+            try {
+                var res = userProvisioner.provisionIfAbsent(profile);
+                if (res != null && res.getAuthorities() != null) {
+                    provisionerAuthorities = new LinkedHashSet<>(res.getAuthorities());
+                }
+            } catch (Exception e) {
+                if (cfg.getLogging().isEnabled()) {
+                    log.error("User provisioning failed: {}", e.getMessage(), e);
+                }
+            }
+        }
+
+        // === 2) Base authorities from provider token (optional) ===
         Set<String> baseAuthorities = oauthToken.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
-        // Expand ROLE_* to permissions using your RBAC map
-        Set<String> expandedAuthorities = rbac.expandAuthorities(baseAuthorities);
+        // === 3) Merge + default role if empty ===
+        LinkedHashSet<String> merged = new LinkedHashSet<>();
+        merged.addAll(provisionerAuthorities);
+        merged.addAll(baseAuthorities);
+        if (merged.isEmpty()) {
+            String def = cfg.getOauth2().getDefaultRole();
+            if (def != null && !def.isBlank()) merged.add(def);
+        }
 
-        // Prepare JWT claims
+        // === 4) Expand ROLE_* -> permissions via RBAC ===
+        Set<String> expandedAuthorities = rbac.expandAuthorities(merged);
+
+        // === 5) Build JWT claims ===
         Map<String, Object> claims = new LinkedHashMap<>();
         claims.put("provider", registrationId);
         claims.put("subject", sub);
@@ -100,32 +126,29 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             claims.put(AuthConstants.CLAIM_ROLES, roles);
         }
 
-        // >>> FIX: pass a real UserDetails (not a lambda) to claimsProvider
+        // Host-provided extra claims
         if (claimsProvider != null) {
             try {
                 UserDetails synthetic = buildUserDetails(username, expandedAuthorities);
                 Map<String, Object> extra = claimsProvider.extractClaims(synthetic);
                 if (extra != null) claims.putAll(extra);
-            } catch (Exception ignored) {
-            }
+            } catch (Exception ignored) { }
         }
 
+        // === 6) Issue tokens ===
         String accessToken = null;
         String refreshToken = null;
-
         if (cfg.getOauth2().isIssueJwt() && cfg.getJwt().isEnabled()) {
             accessToken = jwtUtil.generateAccessToken(username, claims);
-
             if (cfg.getJwt().isRefreshTokenEnabled()) {
                 refreshToken = jwtUtil.generateRefreshToken(username);
             }
         }
 
-        // Optionally set refresh cookie (if cookies + property enabled)
+        // === 7) Optional refresh cookie ===
         if (refreshToken != null
                 && cfg.getCookies().isEnabled()
                 && cfg.getOauth2().isSetRefreshCookie()) {
-
             ResponseCookie c = ResponseCookie.from(cfg.getCookies().getName(), refreshToken)
                     .httpOnly(cfg.getCookies().isHttpOnly())
                     .secure(cfg.getCookies().isSecure())
@@ -136,21 +159,18 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             response.addHeader("Set-Cookie", c.toString());
         }
 
-        // Build success redirect URL with query params
-        UriComponentsBuilder b = UriComponentsBuilder.fromUriString(cfg.getOauth2().getSuccessRedirect());
-
-        if (accessToken != null) {
-            b.queryParam(cfg.getOauth2().getAccessTokenParam(), accessToken);
+        // === 8) Redirect (tokens appended only if explicitly enabled) ===
+        UriComponentsBuilder b = UriComponentsBuilder.fromUriString(cfg.getOauth2().getSuccessRedirect())
+                .queryParam("provider", registrationId);
+        if (cfg.getOauth2().isAppendTokensInRedirect()) {
+            if (accessToken != null) b.queryParam(cfg.getOauth2().getAccessTokenParam(), accessToken);
+            if (refreshToken != null) b.queryParam(cfg.getOauth2().getRefreshTokenParam(), refreshToken);
         }
-        if (refreshToken != null) {
-            b.queryParam(cfg.getOauth2().getRefreshTokenParam(), refreshToken);
-        }
-        b.queryParam("provider", registrationId);
-
         URI redirect = b.build(true).toUri();
 
         if (cfg.getLogging().isEnabled()) {
-            log.info("OAuth2 success for '{}', provider='{}' → redirecting to {}", username, registrationId, redirect);
+            log.info("OAuth2 success for '{}', provider='{}', mergedAuthorities={} → redirect {}",
+                    username, registrationId, merged, redirect);
         }
 
         response.setStatus(HttpServletResponse.SC_FOUND);
@@ -161,18 +181,14 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         Object v = user.getAttributes().get(key);
         return v == null ? null : String.valueOf(v);
     }
-
     private static String firstNonBlank(String... vals) {
-        for (String v : vals) {
-            if (v != null && !v.isBlank()) return v;
-        }
+        for (String v : vals) if (v != null && !v.isBlank()) return v;
         return null;
     }
-
     private static UserDetails buildUserDetails(String username, Collection<String> authorities) {
         String[] authArray = authorities == null ? new String[0] : authorities.toArray(String[]::new);
         return User.withUsername(username)
-                .password("{noop}OAUTH2") // not used; avoids encoder complaints
+                .password("{noop}OAUTH2")
                 .authorities(authArray)
                 .accountExpired(false).accountLocked(false).credentialsExpired(false).disabled(false)
                 .build();

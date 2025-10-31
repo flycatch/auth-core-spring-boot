@@ -4,7 +4,9 @@ import com.flycatch.authcore.config.AuthCoreConfig;
 import com.flycatch.authcore.rbac.RbacAuthorityService;
 import com.flycatch.authcore.security.AuthConstants;
 import com.flycatch.authcore.spi.JwtClaimsProvider;
+import com.flycatch.authcore.spi.OtpSender;
 import com.flycatch.authcore.util.JwtUtil;
+import com.flycatch.authcore.util.OtpUtil;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -35,20 +37,28 @@ public class AuthService  {
     private final AuthCoreConfig cfg;
     private final JwtClaimsProvider claimsProvider;
     private final RbacAuthorityService rbac;
+    private final OtpUtil otpUtil;
+    private final OtpSender otpSender;
+
 
     public AuthService(UserDetailsService userService,
                        PasswordEncoder passwordEncoder,
                        JwtUtil jwtUtil,
                        AuthCoreConfig cfg,
                        JwtClaimsProvider claimsProvider,
-                       RbacAuthorityService rbac) {
+                       RbacAuthorityService rbac,
+                       OtpUtil otpUtil,
+                       OtpSender otpSender) {
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.cfg = cfg;
         this.claimsProvider = claimsProvider;
         this.rbac = rbac;
+        this.otpUtil = otpUtil;
+        this.otpSender = otpSender;
     }
+
 
     @PostConstruct
     public void validateAuthMode() {
@@ -76,11 +86,28 @@ public class AuthService  {
             return invalid();
         }
 
-        if (!passwordEncoder.matches(password, user.getPassword())) {
+        // ===== PASSWORD CHECK / OTP BYPASS =====
+        final boolean otpBypass = "__OTP_VERIFIED__".equals(password);
+        if (!otpBypass && !passwordEncoder.matches(password, user.getPassword())) {
             return invalid();
         }
 
-        // ===== SESSION MODE (PRESERVED) =====
+        // ===== TWO-FACTOR AUTH (EMAIL OTP) BEFORE ISSUING ANY TOKENS =====
+        if (cfg.getTwoFactor().isEnabled() && !otpBypass) {
+            // pick a deliverable address; username if it's an email, else fallback
+            String destination = (user.getUsername() != null && user.getUsername().contains("@"))
+                    ? user.getUsername()
+                    : (user.getUsername() + "@example.local");
+
+            String otp = otpUtil.generate(user.getUsername());
+            otpSender.sendOtp(user.getUsername(), destination, otp);
+
+            Map<String, String> out = new HashMap<>();
+            out.put("message", "OTP_REQUIRED");
+            return out; // STOP HERE — DO NOT ISSUE TOKENS UNTIL /auth/verify-otp
+        }
+
+        // ===== SESSION MODE (if enabled) =====
         if (cfg.getSession().isEnabled()) {
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
@@ -97,7 +124,7 @@ public class AuthService  {
             return out;
         }
 
-        // ===== JWT MODE (PRESERVED + ENHANCED WITH RBAC CLAIMS) =====
+        // ===== JWT MODE =====
         if (cfg.getJwt().isEnabled()) {
             // take authorities from UserDetails and expand ROLE_* -> YAML permissions
             Set<String> baseAuthorities = user.getAuthorities().stream()
@@ -136,6 +163,7 @@ public class AuthService  {
 
         throw new IllegalStateException("No authentication mechanism enabled.");
     }
+
 
     public Map<String, String> refreshAccessToken(String refreshToken, HttpServletResponse response) {
         if (!isRefreshEnabled()) {

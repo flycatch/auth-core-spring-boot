@@ -20,6 +20,8 @@ public class AuthCoreConfig {
 
     /** OAuth2 login controls (enable + redirects + JWT emission) */
     private OAuth2 oauth2 = new OAuth2();
+    private TwoFactor twoFactor = new TwoFactor();
+
 
     @Setter @Getter
     public static class Jwt {
@@ -79,6 +81,15 @@ public class AuthCoreConfig {
 
         /** NEW: fallback role if no authorities are returned from provider/provisioner */
         private String defaultRole = "ROLE_USER";
+    }
+
+    @Setter @Getter
+    public static class TwoFactor {
+        private boolean enabled = false;
+        private String type = "email"; // email or sms (future use)
+        private int length = 6;        // digits/characters
+        private boolean alphanumeric = false;
+        private long expirySeconds = 300; // OTP validity (5 min)
     }
 
     @PostConstruct

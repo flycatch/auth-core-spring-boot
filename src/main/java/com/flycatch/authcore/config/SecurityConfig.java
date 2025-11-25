@@ -3,6 +3,7 @@ package com.flycatch.authcore.config;
 import com.flycatch.authcore.middleware.JwtAuthFilter;
 import com.flycatch.authcore.oauth2.OAuth2LoginFailureHandler;
 import com.flycatch.authcore.oauth2.OAuth2LoginSuccessHandler;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -16,6 +17,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
+@ConditionalOnMissingBean(SecurityFilterChain.class)
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
@@ -37,6 +39,7 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        // Pure API style – CSRF off. Client backend can override if needed.
         http.csrf(AbstractHttpConfigurer::disable);
 
         http.authorizeHttpRequests(auth -> auth
@@ -47,7 +50,7 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
         );
 
-        // Session vs Stateless
+        // Session vs stateless
         if (authCoreConfig.getSession().isEnabled()) {
             http.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED));
         } else {
@@ -76,6 +79,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @ConditionalOnMissingBean(PasswordEncoder.class)
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }

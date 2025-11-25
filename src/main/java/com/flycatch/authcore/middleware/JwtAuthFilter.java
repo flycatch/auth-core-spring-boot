@@ -25,8 +25,7 @@ import java.util.stream.Collectors;
 
 /**
  * Stateless JWT auth filter. Skips /auth/** so white-label endpoints are publicly accessible.
- * PRESERVED: logging, /auth/** bypass, error handling.
- * ENHANCED: restore authorities from JWT (authorities claim) or fallback to DB + YAML expansion.
+ * API responses on failure are generic ("UNAUTHORIZED"); details only in logs.
  */
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
@@ -105,13 +104,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 if (cfg.getLogging().isEnabled()) {
                     log.warn("JWT token expired for user: {}", e.getClaims().getSubject());
                 }
-                res.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token Expired");
+                res.sendError(HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED");
                 return;
             } catch (Exception e) {
                 if (cfg.getLogging().isEnabled()) {
-                    log.error("JWT processing failed: {}", e.getMessage());
+                    log.error("JWT processing failed: {}", e.getMessage(), e);
                 }
-                res.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid Token");
+                res.sendError(HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED");
                 return;
             }
         }
@@ -132,7 +131,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                         .map(SimpleGrantedAuthority::new)
                         .collect(Collectors.toList());
             }
-        } catch (Exception ignored) { }
+        } catch (Exception ignored) {
+        }
         return Collections.emptyList();
     }
 }

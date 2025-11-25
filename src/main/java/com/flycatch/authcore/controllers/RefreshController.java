@@ -9,7 +9,10 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,6 +28,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "auth.endpoints", name = "refresh-enabled", havingValue = "true", matchIfMissing = false)
 public class RefreshController {
+
+    private static final Logger log = LoggerFactory.getLogger(RefreshController.class);
 
     private final AuthService authService;
     private final AuthCoreConfig cfg;
@@ -53,12 +58,19 @@ public class RefreshController {
             return ResponseEntity.badRequest().body(new MessageResponse("REFRESH_TOKEN_REQUIRED"));
         }
 
-        Map<String, String> out = authService.refreshAccessToken(token, response);
-
-        return ResponseEntity.ok(new AuthResponse(
-                out.get("accessToken"),
-                out.get("refreshToken"),
-                "REFRESHED"
-        ));
+        try {
+            Map<String, String> out = authService.refreshAccessToken(token, response);
+            return ResponseEntity.ok(new AuthResponse(
+                    out.get("accessToken"),
+                    out.get("refreshToken"),
+                    "REFRESHED"
+            ));
+        } catch (Exception ex) {
+            if (cfg.getLogging().isEnabled()) {
+                log.warn("Refresh token failure: {}", ex.getMessage(), ex);
+            }
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new MessageResponse("UNAUTHORIZED"));
+        }
     }
 }

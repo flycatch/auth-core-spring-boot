@@ -2,10 +2,13 @@ package com.flycatch.authcore.spi;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Component;
 
 @Component
+@ConditionalOnMissingBean(OtpSender.class)
 public class NoopOtpSender implements OtpSender {
+
     private static final Logger log = LoggerFactory.getLogger(NoopOtpSender.class);
 
     @Override

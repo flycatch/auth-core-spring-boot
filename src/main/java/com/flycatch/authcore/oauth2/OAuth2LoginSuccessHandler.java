@@ -34,13 +34,13 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private final JwtUtil jwtUtil;
     private final AuthCoreConfig cfg;
-    private final JwtClaimsProvider claimsProvider;
+    private final Optional<JwtClaimsProvider> claimsProvider;
     private final RbacAuthorityService rbac;
     private final UserProvisioner userProvisioner;
 
     public OAuth2LoginSuccessHandler(JwtUtil jwtUtil,
                                      AuthCoreConfig cfg,
-                                     JwtClaimsProvider claimsProvider,
+                                     Optional<JwtClaimsProvider> claimsProvider,
                                      RbacAuthorityService rbac,
                                      UserProvisioner userProvisioner) {
         this.jwtUtil = jwtUtil;
@@ -57,14 +57,13 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             throws IOException, ServletException {
 
         if (!(authentication instanceof OAuth2AuthenticationToken oauthToken)) {
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid OAuth2 authentication");
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED");
             return;
         }
 
         OAuth2User oauth2User = oauthToken.getPrincipal();
         String registrationId = oauthToken.getAuthorizedClientRegistrationId(); // e.g., google, github
 
-        // Normalize identity
         String email = firstNonBlank(
                 get(oauth2User, "email"),
                 get(oauth2User, "email_address"),
@@ -76,13 +75,24 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                 get(oauth2User, "user_id")
         );
         String login = get(oauth2User, "login"); // GitHub
-        String username = firstNonBlank(email, login, (registrationId + ":" + (sub != null ? sub : UUID.randomUUID())));
+        String username = firstNonBlank(
+                email,
+                login,
+                (registrationId + ":" + (sub != null ? sub : UUID.randomUUID()))
+        );
 
         // === 1) Auto-provision: host app decides how to persist/link user (idempotent) ===
         Set<String> provisionerAuthorities = Collections.emptySet();
         if (cfg.getOauth2().isAutoProvisionEnabled()) {
             UserProvisioner.OAuth2UserProfile profile =
-                    new UserProvisioner.OAuth2UserProfile(registrationId, sub, username, email, login, oauth2User.getAttributes());
+                    new UserProvisioner.OAuth2UserProfile(
+                            registrationId,
+                            sub,
+                            username,
+                            email,
+                            login,
+                            oauth2User.getAttributes()
+                    );
             try {
                 var res = userProvisioner.provisionIfAbsent(profile);
                 if (res != null && res.getAuthorities() != null) {
@@ -106,7 +116,9 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         merged.addAll(baseAuthorities);
         if (merged.isEmpty()) {
             String def = cfg.getOauth2().getDefaultRole();
-            if (def != null && !def.isBlank()) merged.add(def);
+            if (def != null && !def.isBlank()) {
+                merged.add(def);
+            }
         }
 
         // === 4) Expand ROLE_* -> permissions via RBAC ===
@@ -126,14 +138,20 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             claims.put(AuthConstants.CLAIM_ROLES, roles);
         }
 
-        // Host-provided extra claims
-        if (claimsProvider != null) {
+        // Host-provided extra claims (optional)
+        claimsProvider.ifPresent(provider -> {
             try {
                 UserDetails synthetic = buildUserDetails(username, expandedAuthorities);
-                Map<String, Object> extra = claimsProvider.extractClaims(synthetic);
-                if (extra != null) claims.putAll(extra);
-            } catch (Exception ignored) { }
-        }
+                Map<String, Object> extra = provider.extractClaims(synthetic);
+                if (extra != null) {
+                    claims.putAll(extra);
+                }
+            } catch (Exception e) {
+                if (cfg.getLogging().isEnabled()) {
+                    log.warn("JwtClaimsProvider threw exception in OAuth2 success: {}", e.getMessage(), e);
+                }
+            }
+        });
 
         // === 6) Issue tokens ===
         String accessToken = null;
@@ -163,8 +181,12 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         UriComponentsBuilder b = UriComponentsBuilder.fromUriString(cfg.getOauth2().getSuccessRedirect())
                 .queryParam("provider", registrationId);
         if (cfg.getOauth2().isAppendTokensInRedirect()) {
-            if (accessToken != null) b.queryParam(cfg.getOauth2().getAccessTokenParam(), accessToken);
-            if (refreshToken != null) b.queryParam(cfg.getOauth2().getRefreshTokenParam(), refreshToken);
+            if (accessToken != null) {
+                b.queryParam(cfg.getOauth2().getAccessTokenParam(), accessToken);
+            }
+            if (refreshToken != null) {
+                b.queryParam(cfg.getOauth2().getRefreshTokenParam(), refreshToken);
+            }
         }
         URI redirect = b.build(true).toUri();
 
@@ -181,16 +203,23 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         Object v = user.getAttributes().get(key);
         return v == null ? null : String.valueOf(v);
     }
+
     private static String firstNonBlank(String... vals) {
-        for (String v : vals) if (v != null && !v.isBlank()) return v;
+        for (String v : vals) {
+            if (v != null && !v.isBlank()) return v;
+        }
         return null;
     }
+
     private static UserDetails buildUserDetails(String username, Collection<String> authorities) {
         String[] authArray = authorities == null ? new String[0] : authorities.toArray(String[]::new);
         return User.withUsername(username)
                 .password("{noop}OAUTH2")
                 .authorities(authArray)
-                .accountExpired(false).accountLocked(false).credentialsExpired(false).disabled(false)
+                .accountExpired(false)
+                .accountLocked(false)
+                .credentialsExpired(false)
+                .disabled(false)
                 .build();
     }
 }

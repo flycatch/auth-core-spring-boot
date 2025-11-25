@@ -27,7 +27,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-public class AuthService  {
+public class AuthService {
 
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
@@ -35,17 +35,16 @@ public class AuthService  {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthCoreConfig cfg;
-    private final JwtClaimsProvider claimsProvider;
+    private final Optional<JwtClaimsProvider> claimsProvider;
     private final RbacAuthorityService rbac;
     private final OtpUtil otpUtil;
     private final OtpSender otpSender;
-
 
     public AuthService(UserDetailsService userService,
                        PasswordEncoder passwordEncoder,
                        JwtUtil jwtUtil,
                        AuthCoreConfig cfg,
-                       JwtClaimsProvider claimsProvider,
+                       Optional<JwtClaimsProvider> claimsProvider,
                        RbacAuthorityService rbac,
                        OtpUtil otpUtil,
                        OtpSender otpSender) {
@@ -59,11 +58,12 @@ public class AuthService  {
         this.otpSender = otpSender;
     }
 
-
     @PostConstruct
     public void validateAuthMode() {
         if (!cfg.getJwt().isEnabled() && !cfg.getSession().isEnabled()) {
-            throw new IllegalStateException("Both JWT and Session authentication are disabled. Please enable at least one in config.");
+            throw new IllegalStateException(
+                    "Both JWT and Session authentication are disabled. Please enable at least one in config."
+            );
         }
     }
 
@@ -75,6 +75,7 @@ public class AuthService  {
                                             String password,
                                             HttpServletResponse response,
                                             HttpServletRequest request) {
+
         if (cfg.getLogging().isEnabled()) {
             logger.info("Authenticating user: {}", loginId);
         }
@@ -94,7 +95,6 @@ public class AuthService  {
 
         // ===== TWO-FACTOR AUTH (EMAIL OTP) BEFORE ISSUING ANY TOKENS =====
         if (cfg.getTwoFactor().isEnabled() && !otpBypass) {
-            // pick a deliverable address; username if it's an email, else fallback
             String destination = (user.getUsername() != null && user.getUsername().contains("@"))
                     ? user.getUsername()
                     : (user.getUsername() + "@example.local");
@@ -107,8 +107,8 @@ public class AuthService  {
             return out; // STOP HERE — DO NOT ISSUE TOKENS UNTIL /auth/verify-otp
         }
 
-        // ===== SESSION MODE (if enabled) =====
-        if (cfg.getSession().isEnabled()) {
+        // ===== SESSION MODE (if enabled AND request is non-null) =====
+        if (cfg.getSession().isEnabled() && request != null) {
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
 
@@ -116,7 +116,6 @@ public class AuthService  {
             context.setAuthentication(authentication);
             SecurityContextHolder.setContext(context);
 
-            // Persist security context so subsequent requests with JSESSIONID are authenticated
             new HttpSessionSecurityContextRepository().saveContext(context, request, response);
 
             Map<String, String> out = new HashMap<>();
@@ -126,18 +125,25 @@ public class AuthService  {
 
         // ===== JWT MODE =====
         if (cfg.getJwt().isEnabled()) {
-            // take authorities from UserDetails and expand ROLE_* -> YAML permissions
             Set<String> baseAuthorities = user.getAuthorities().stream()
                     .map(GrantedAuthority::getAuthority)
                     .collect(Collectors.toSet());
             Set<String> expandedAuthorities = rbac.expandAuthorities(baseAuthorities);
 
             Map<String, Object> claims = new HashMap<>();
-            if (claimsProvider != null) {
-                Map<String, Object> extra = claimsProvider.extractClaims(user);
-                if (extra != null) claims.putAll(extra);
-            }
-            // embed final authorities + roles into token (for downstream method security)
+            claimsProvider.ifPresent(provider -> {
+                try {
+                    Map<String, Object> extra = provider.extractClaims(user);
+                    if (extra != null) {
+                        claims.putAll(extra);
+                    }
+                } catch (Exception e) {
+                    if (cfg.getLogging().isEnabled()) {
+                        logger.warn("JwtClaimsProvider threw exception: {}", e.getMessage(), e);
+                    }
+                }
+            });
+
             List<String> authorities = expandedAuthorities.stream().sorted().toList();
             claims.put(AuthConstants.CLAIM_AUTHORITIES, authorities);
             List<String> roles = authorities.stream().filter(a -> a.startsWith("ROLE_")).toList();
@@ -164,7 +170,6 @@ public class AuthService  {
         throw new IllegalStateException("No authentication mechanism enabled.");
     }
 
-
     public Map<String, String> refreshAccessToken(String refreshToken, HttpServletResponse response) {
         if (!isRefreshEnabled()) {
             throw new UnsupportedOperationException("Refresh token is disabled.");
@@ -180,17 +185,25 @@ public class AuthService  {
 
         final UserDetails user = userService.loadUserByUsername(username);
 
-        // rebuild claims using up-to-date authorities (RBAC)
         Set<String> baseAuthorities = user.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toSet());
         Set<String> expandedAuthorities = rbac.expandAuthorities(baseAuthorities);
 
         Map<String, Object> claims = new HashMap<>();
-        if (claimsProvider != null) {
-            Map<String, Object> extra = claimsProvider.extractClaims(user);
-            if (extra != null) claims.putAll(extra);
-        }
+        claimsProvider.ifPresent(provider -> {
+            try {
+                Map<String, Object> extra = provider.extractClaims(user);
+                if (extra != null) {
+                    claims.putAll(extra);
+                }
+            } catch (Exception e) {
+                if (cfg.getLogging().isEnabled()) {
+                    logger.warn("JwtClaimsProvider threw exception during refresh: {}", e.getMessage(), e);
+                }
+            }
+        });
+
         List<String> authorities = expandedAuthorities.stream().sorted().toList();
         claims.put(AuthConstants.CLAIM_AUTHORITIES, authorities);
         List<String> roles = authorities.stream().filter(a -> a.startsWith("ROLE_")).toList();
@@ -216,10 +229,10 @@ public class AuthService  {
     /**
      * Logout for both modes:
      * - SESSION mode: invalidates HttpSession, clears SecurityContext, expires JSESSIONID.
-     * - JWT mode: clears refresh cookie if enabled. (Access tokens remain statelessly valid until expiry.)
+     * - JWT mode: clears refresh cookie if enabled.
      */
     public Map<String, String> logout(HttpServletRequest request, HttpServletResponse response) {
-        var session = request.getSession(false);
+        var session = request != null ? request.getSession(false) : null;
         if (session != null) {
             session.invalidate();
         }
@@ -246,17 +259,19 @@ public class AuthService  {
 
         Map<String, String> out = new HashMap<>();
         out.put("message", "LOGOUT_SUCCESS");
-        if (cfg.getLogging().isEnabled()) logger.info("User logged out (session invalidated, cookies cleared).");
+        if (cfg.getLogging().isEnabled()) {
+            logger.info("User logged out (session invalidated, cookies cleared).");
+        }
         return out;
     }
 
     private Map<String, String> invalid() {
         Map<String, String> out = new HashMap<>();
-        out.put("message", "INVALID_CREDENTIALS");
+        // Generic to client; detailed reason stays in logs only.
+        out.put("message", "UNAUTHORIZED");
         return out;
     }
 
-    /** Use ResponseCookie so SameSite is honored */
     private void setCookie(HttpServletResponse response, String name, String value, int maxAgeSeconds) {
         ResponseCookie cookie = ResponseCookie.from(name, value)
                 .httpOnly(cfg.getCookies().isHttpOnly())

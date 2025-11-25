@@ -87,13 +87,13 @@ public class AuthService {
             return invalid();
         }
 
-        // ===== PASSWORD CHECK / OTP BYPASS =====
+        // PASSWORD CHECK / OTP BYPASS
         final boolean otpBypass = "__OTP_VERIFIED__".equals(password);
         if (!otpBypass && !passwordEncoder.matches(password, user.getPassword())) {
             return invalid();
         }
 
-        // ===== TWO-FACTOR AUTH (EMAIL OTP) BEFORE ISSUING ANY TOKENS =====
+        // TWO-FACTOR AUTH (EMAIL OTP) BEFORE ISSUING ANY TOKENS
         if (cfg.getTwoFactor().isEnabled() && !otpBypass) {
             String destination = (user.getUsername() != null && user.getUsername().contains("@"))
                     ? user.getUsername()
@@ -104,10 +104,10 @@ public class AuthService {
 
             Map<String, String> out = new HashMap<>();
             out.put("message", "OTP_REQUIRED");
-            return out; // STOP HERE — DO NOT ISSUE TOKENS UNTIL /auth/verify-otp
+            return out;
         }
 
-        // ===== SESSION MODE (if enabled AND request is non-null) =====
+        // SESSION MODE (if enabled AND request is non-null)
         if (cfg.getSession().isEnabled() && request != null) {
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
@@ -123,48 +123,9 @@ public class AuthService {
             return out;
         }
 
-        // ===== JWT MODE =====
+        // JWT MODE
         if (cfg.getJwt().isEnabled()) {
-            Set<String> baseAuthorities = user.getAuthorities().stream()
-                    .map(GrantedAuthority::getAuthority)
-                    .collect(Collectors.toSet());
-            Set<String> expandedAuthorities = rbac.expandAuthorities(baseAuthorities);
-
-            Map<String, Object> claims = new HashMap<>();
-            claimsProvider.ifPresent(provider -> {
-                try {
-                    Map<String, Object> extra = provider.extractClaims(user);
-                    if (extra != null) {
-                        claims.putAll(extra);
-                    }
-                } catch (Exception e) {
-                    if (cfg.getLogging().isEnabled()) {
-                        logger.warn("JwtClaimsProvider threw exception: {}", e.getMessage(), e);
-                    }
-                }
-            });
-
-            List<String> authorities = expandedAuthorities.stream().sorted().toList();
-            claims.put(AuthConstants.CLAIM_AUTHORITIES, authorities);
-            List<String> roles = authorities.stream().filter(a -> a.startsWith("ROLE_")).toList();
-            claims.put(AuthConstants.CLAIM_ROLES, roles);
-
-            String accessToken = jwtUtil.generateAccessToken(user.getUsername(), claims);
-
-            Map<String, String> out = new HashMap<>();
-            out.put("accessToken", accessToken);
-            out.put("message", "JWT_AUTHENTICATED");
-
-            if (isRefreshEnabled()) {
-                String refreshToken = jwtUtil.generateRefreshToken(user.getUsername());
-                out.put("refreshToken", refreshToken);
-
-                if (cfg.getCookies().isEnabled()) {
-                    setCookie(response, cfg.getCookies().getName(), refreshToken, cfg.getCookies().getMaxAge());
-                }
-            }
-
-            return out;
+            return issueJwtTokens(user, response, "JWT_AUTHENTICATED");
         }
 
         throw new IllegalStateException("No authentication mechanism enabled.");
@@ -184,46 +145,23 @@ public class AuthService {
         }
 
         final UserDetails user = userService.loadUserByUsername(username);
+        return issueJwtTokens(user, response, "REFRESHED");
+    }
 
-        Set<String> baseAuthorities = user.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.toSet());
-        Set<String> expandedAuthorities = rbac.expandAuthorities(baseAuthorities);
-
-        Map<String, Object> claims = new HashMap<>();
-        claimsProvider.ifPresent(provider -> {
-            try {
-                Map<String, Object> extra = provider.extractClaims(user);
-                if (extra != null) {
-                    claims.putAll(extra);
-                }
-            } catch (Exception e) {
-                if (cfg.getLogging().isEnabled()) {
-                    logger.warn("JwtClaimsProvider threw exception during refresh: {}", e.getMessage(), e);
-                }
-            }
-        });
-
-        List<String> authorities = expandedAuthorities.stream().sorted().toList();
-        claims.put(AuthConstants.CLAIM_AUTHORITIES, authorities);
-        List<String> roles = authorities.stream().filter(a -> a.startsWith("ROLE_")).toList();
-        claims.put(AuthConstants.CLAIM_ROLES, roles);
-
-        String newAccessToken = jwtUtil.generateAccessToken(username, claims);
-
-        Map<String, String> out = new HashMap<>();
-        out.put("accessToken", newAccessToken);
-
-        if (isRefreshEnabled()) {
-            String newRefreshToken = jwtUtil.generateRefreshToken(username);
-            out.put("refreshToken", newRefreshToken);
-
-            if (cfg.getCookies().isEnabled()) {
-                setCookie(response, cfg.getCookies().getName(), newRefreshToken, cfg.getCookies().getMaxAge());
-            }
+    /**
+     * OAuth2 code-flow helper:
+     *  Given a username (resolved during OAuth2 success), issue access/refresh tokens.
+     */
+    public Map<String, String> issueTokensForOAuth2(String username, HttpServletResponse response) {
+        if (!cfg.getJwt().isEnabled()) {
+            throw new IllegalStateException("JWT is disabled. OAuth2 code flow requires JWT mode.");
+        }
+        if (username == null || username.isBlank()) {
+            throw new IllegalArgumentException("username is required for OAuth2 token issuance");
         }
 
-        return out;
+        final UserDetails user = userService.loadUserByUsername(username);
+        return issueJwtTokens(user, response, "OAUTH2_JWT_ISSUED");
     }
 
     /**
@@ -267,8 +205,63 @@ public class AuthService {
 
     private Map<String, String> invalid() {
         Map<String, String> out = new HashMap<>();
-        // Generic to client; detailed reason stays in logs only.
         out.put("message", "UNAUTHORIZED");
+        return out;
+    }
+
+    /**
+     * Core JWT issuance logic reused by:
+     *  - username/password login
+     *  - refreshAccessToken
+     *  - OAuth2 code-flow exchange
+     */
+    private Map<String, String> issueJwtTokens(UserDetails user,
+                                               HttpServletResponse response,
+                                               String messageForClient) {
+
+        if (!cfg.getJwt().isEnabled()) {
+            throw new IllegalStateException("JWT is disabled via configuration.");
+        }
+
+        Set<String> baseAuthorities = user.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
+        Set<String> expandedAuthorities = rbac.expandAuthorities(baseAuthorities);
+
+        Map<String, Object> claims = new HashMap<>();
+        claimsProvider.ifPresent(provider -> {
+            try {
+                Map<String, Object> extra = provider.extractClaims(user);
+                if (extra != null) {
+                    claims.putAll(extra);
+                }
+            } catch (Exception e) {
+                if (cfg.getLogging().isEnabled()) {
+                    logger.warn("JwtClaimsProvider threw exception: {}", e.getMessage(), e);
+                }
+            }
+        });
+
+        List<String> authorities = expandedAuthorities.stream().sorted().toList();
+        claims.put(AuthConstants.CLAIM_AUTHORITIES, authorities);
+        List<String> roles = authorities.stream().filter(a -> a.startsWith("ROLE_")).toList();
+        claims.put(AuthConstants.CLAIM_ROLES, roles);
+
+        String accessToken = jwtUtil.generateAccessToken(user.getUsername(), claims);
+
+        Map<String, String> out = new HashMap<>();
+        out.put("accessToken", accessToken);
+        out.put("message", messageForClient);
+
+        if (isRefreshEnabled()) {
+            String refreshToken = jwtUtil.generateRefreshToken(user.getUsername());
+            out.put("refreshToken", refreshToken);
+
+            if (cfg.getCookies().isEnabled()) {
+                setCookie(response, cfg.getCookies().getName(), refreshToken, cfg.getCookies().getMaxAge());
+            }
+        }
+
         return out;
     }
 

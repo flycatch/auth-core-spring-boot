@@ -37,17 +37,20 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     private final Optional<JwtClaimsProvider> claimsProvider;
     private final RbacAuthorityService rbac;
     private final UserProvisioner userProvisioner;
+    private final OAuth2AuthorizationCodeService codeService;
 
     public OAuth2LoginSuccessHandler(JwtUtil jwtUtil,
                                      AuthCoreConfig cfg,
                                      Optional<JwtClaimsProvider> claimsProvider,
                                      RbacAuthorityService rbac,
-                                     UserProvisioner userProvisioner) {
+                                     UserProvisioner userProvisioner,
+                                     OAuth2AuthorizationCodeService codeService) {
         this.jwtUtil = jwtUtil;
         this.cfg = cfg;
         this.claimsProvider = claimsProvider;
         this.rbac = rbac;
         this.userProvisioner = userProvisioner;
+        this.codeService = codeService;
     }
 
     @Override
@@ -81,7 +84,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                 (registrationId + ":" + (sub != null ? sub : UUID.randomUUID()))
         );
 
-        // === 1) Auto-provision: host app decides how to persist/link user (idempotent) ===
+        // 1) Auto-provision user in client system (idempotent)
         Set<String> provisionerAuthorities = Collections.emptySet();
         if (cfg.getOauth2().isAutoProvisionEnabled()) {
             UserProvisioner.OAuth2UserProfile profile =
@@ -105,12 +108,12 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             }
         }
 
-        // === 2) Base authorities from provider token (optional) ===
+        // 2) Authorities from provider token
         Set<String> baseAuthorities = oauthToken.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
-        // === 3) Merge + default role if empty ===
+        // 3) Merge + default role
         LinkedHashSet<String> merged = new LinkedHashSet<>();
         merged.addAll(provisionerAuthorities);
         merged.addAll(baseAuthorities);
@@ -121,10 +124,32 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             }
         }
 
-        // === 4) Expand ROLE_* -> permissions via RBAC ===
+        // 4) Expand ROLE_* → permissions via RBAC
         Set<String> expandedAuthorities = rbac.expandAuthorities(merged);
 
-        // === 5) Build JWT claims ===
+        boolean useCodeFlow = cfg.getOauth2().isAuthorizationCodeEnabled();
+
+        // 4.5) If code-flow is enabled, generate short-lived code and redirect without tokens
+        if (useCodeFlow) {
+            String code = codeService.createCode(username);
+
+            UriComponentsBuilder b = UriComponentsBuilder.fromUriString(cfg.getOauth2().getSuccessRedirect())
+                    .queryParam("provider", registrationId)
+                    .queryParam(cfg.getOauth2().getCodeParam(), code);
+
+            URI redirect = b.build(true).toUri();
+
+            if (cfg.getLogging().isEnabled()) {
+                log.info("OAuth2 success (code flow) for '{}', provider='{}', mergedAuthorities={} → redirect {}",
+                        username, registrationId, merged, redirect);
+            }
+
+            response.setStatus(HttpServletResponse.SC_FOUND);
+            response.setHeader("Location", redirect.toString());
+            return;
+        }
+
+        // 5) Build JWT claims (classic behavior)
         Map<String, Object> claims = new LinkedHashMap<>();
         claims.put("provider", registrationId);
         claims.put("subject", sub);
@@ -138,7 +163,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             claims.put(AuthConstants.CLAIM_ROLES, roles);
         }
 
-        // Host-provided extra claims (optional)
+        // Host-provided extra claims
         claimsProvider.ifPresent(provider -> {
             try {
                 UserDetails synthetic = buildUserDetails(username, expandedAuthorities);
@@ -153,7 +178,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             }
         });
 
-        // === 6) Issue tokens ===
+        // 6) Issue tokens (classic behavior)
         String accessToken = null;
         String refreshToken = null;
         if (cfg.getOauth2().isIssueJwt() && cfg.getJwt().isEnabled()) {
@@ -163,7 +188,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             }
         }
 
-        // === 7) Optional refresh cookie ===
+        // 7) Optional refresh cookie
         if (refreshToken != null
                 && cfg.getCookies().isEnabled()
                 && cfg.getOauth2().isSetRefreshCookie()) {
@@ -177,7 +202,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             response.addHeader("Set-Cookie", c.toString());
         }
 
-        // === 8) Redirect (tokens appended only if explicitly enabled) ===
+        // 8) Redirect (optional tokens in query if explicitly enabled)
         UriComponentsBuilder b = UriComponentsBuilder.fromUriString(cfg.getOauth2().getSuccessRedirect())
                 .queryParam("provider", registrationId);
         if (cfg.getOauth2().isAppendTokensInRedirect()) {
@@ -206,7 +231,9 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private static String firstNonBlank(String... vals) {
         for (String v : vals) {
-            if (v != null && !v.isBlank()) return v;
+            if (v != null && !v.isBlank()) {
+                return v;
+            }
         }
         return null;
     }
